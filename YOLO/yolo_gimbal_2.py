@@ -33,7 +33,7 @@ else:
 model = YOLO('yolov8s.pt')
 
 # 다이나믹셀 설정
-portHandler = PortHandler('/dev/ttyACM0')
+portHandler = PortHandler('/dev/ttyACM1')
 packetHandler = PacketHandler(2.0)
 
 groupBulkWrite = GroupBulkWrite(portHandler, packetHandler)
@@ -63,10 +63,11 @@ camera_matrix = np.array([[623.54013868, 0, 331.5450823],
 dist_coeffs = np.array([0.11563788, -0.00684786, -0.00223002, 0.00458697, -0.52293788])
 
 #다이나믹셀 기본 값 설정
-IDS                   = [1, 2, 3, 4]  # 속도
-IDS_2                 = [5, 6]        # 조향각
-# IDS_GIM               = [7, 8, 9]     # 짐벌 카메라
-
+IDS_vel                  = [1, 2, 3, 4]        # 속도
+IDS_pos                 = [5, 6]              # 조향각
+# IDS_GIM               = [7, 8, 9]         # 짐벌 카메라
+L = 0.3                                     # 휠베이스 (앞바퀴와 뒷바퀴 간 거리)
+W = 0.2                                     # 트레드 (좌우 바퀴 간 거리)
 
 # 다이나믹셀 함수 정의
 def repeat_write (ID_list, addr_, data_val):
@@ -149,24 +150,30 @@ def draw_grid_with_angles(image):
         cv2.line(image, (x, 0), (x, h), (0, 255, 0), 1)  # 초록색
 
     # 빨간색 중심선 그리기
-    center_x = w // 2
-    center_y = h // 2
-    cv2.line(image, (center_x, 0), (center_x, h), (0, 0, 255), 2)  # 빨간색, 두께 2
-    cv2.line(image, (0, center_y), (w, center_y), (0, 0, 255), 2)  # 빨간색, 두께 2
+    # center_x = w // 2
+    # center_y = h // 2
+    # cv2.line(image, (center_x, 0), (center_x, h), (0, 0, 255), 2)  # 빨간색, 두께 2
+    # cv2.line(image, (0, center_y), (w, center_y), (0, 0, 255), 2)  # 빨간색, 두께 2
 
-def rotate_dynamixel_180(id):
-    # 180도는 다이나믹셀에서 약 512 단위입니다 (0~4095 범위에서 중간값 2048을 기준으로)
-    target_position = 60  # 2048(중앙) + 512(90도) = 2560(180도)
-    packetHandler.write4ByteTxRx(portHandler, id, 104, target_position)
+def rotate_dynamixel(ID_):         # 속도 40 주는 코드
+    repeat_write(ID_, 104, 40)
 
-def no_rotate_dynamixel(id):
-    target_position = 0
-    packetHandler.write4ByteTxRx(portHandler, id, 104, target_position)
+def no_rotate_dynamixel(ID_Z):         # 속도 0주는 코드 
+    repeat_write(ID_Z, 104, 0)
 
-repeat_write([1], 64, 0)  #setting for velocity(1,2,3,4)
-repeat_write([1], 11, 1)
-repeat_write([1], 64, 1)
-no_rotate_dynamixel(1)
+repeat_write(IDS_vel, 64, 0)               #setting for velocity(1,2,3,4)
+repeat_write(IDS_vel, 11, 1)
+repeat_write(IDS_vel, 64, 1)
+repeat_write(IDS_pos, 64, 0)             #setting for position(5,6)
+repeat_write(IDS_pos, 11, 3)
+repeat_write(IDS_pos, 64, 1)
+
+goal_vel = 0
+goal_vel_1 = 0
+goal_pos = 2048
+
+no_rotate_dynamixel(IDS_vel)
+repeat_write(IDS_pos, 116, goal_pos)
 
 ################################# main ################################################3
 
@@ -225,14 +232,57 @@ try:
                 output_text = f"{depth_object_name}, {position_label}, {gimbal_label}"
 
                 print(f"\nDetected object coordinates: {position_label}")
-                rotate_dynamixel_180(1)
+                rotate_dynamixel(IDS_vel)
 
-                if float(obj_y) < 0.35:
-                    no_rotate_dynamixel(1)
+                if float(obj_y) < 0.4:
+                    no_rotate_dynamixel(IDS_vel)
                     print(obj_y)
+                
+                elif float(gimbal_angle_x) == -8.62:   #################### 여기 코드 최적화 하기
+                    goal_pos += 170
+                    angle_goal_pos = goal_pos * (360/4096)
+       
+                    if goal_pos == 2048:
+                        goal_pos_outer = 2048
+                    else:
+                        repeat_write([5], 116, goal_pos)          # 5번이 in, 6번이 out
+                        R = (L / math.tan(math.radians(angle_goal_pos - 180)) + (W / 2)) 
+                        goal_pos_outer = (math.degrees(math.atan(L / (R +(W / 2)))) + 180) * (4096 / 360)
+
+                        repeat_write([6], 116, int(goal_pos_outer))
+                        print(f"ID5= {goal_pos}, ID6= {goal_pos_outer}")
+                        
+                        rotate_dynamixel(IDS_vel)
+                        time.sleep(1)
+                        repeat_write(IDS_pos, 116, 2048)
+
+                    break
+                
+                elif float(gimbal_angle_x) == -17.24:
+                    goal_pos += 340
+                    angle_goal_pos = goal_pos * (360/4096)
+       
+                    if goal_pos == 2048:
+                        goal_pos_outer = 2048
+                    else:
+                        repeat_write([5], 116, goal_pos)          # 5번이 in, 6번이 out
+                        R = (L / math.tan(math.radians(angle_goal_pos - 180)) + (W / 2)) 
+                        goal_pos_outer = (math.degrees(math.atan(L / (R +(W / 2)))) + 180) * (4096 / 360)
+
+                        repeat_write([6], 116, int(goal_pos_outer))
+                        print(f"ID5= {goal_pos}, ID6= {goal_pos_outer}")
+
+                        rotate_dynamixel(IDS_vel)
+                        time.sleep(1)
+                        repeat_write(IDS_pos, 116, 2048)
+
+                    break
+
+
+
 
         if output_text == "":
-            no_rotate_dynamixel(1)
+            no_rotate_dynamixel(IDS_vel)
 
 
         # 터미널 출력 (덮어쓰기)
