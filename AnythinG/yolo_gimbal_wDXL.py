@@ -10,6 +10,8 @@ from Dynmxl_Setup_Constant import *
 from Dynmxl_initializing import *
 from Dynmxl_running import Dynmxl_process_for_ATOM
 
+import math
+
 # YOLO 모델 로드
 model = YOLO('yolov8s.pt')
 
@@ -61,12 +63,15 @@ def calculate_gimbal_angles(pixel_x, pixel_y, image_width=640, image_height=480)
     center_y = image_height // 2  # 240
 
     diff_x = pixel_x - center_x
-    diff_y = ((pixel_y + 15 + y1) // 2)- center_y
+    diff_y = ((pixel_y + 15 + y1) // 2) - center_y
 
     angle_x = 0
     angle_y = 0
 
     # X축 (수평) 각도 계산
+    angle_x = 34.5 * (diff_x / center_x)
+
+    '''
     if abs(diff_x) <= 40:
         angle_x = 0
     elif abs(diff_x) <= 120:
@@ -77,6 +82,7 @@ def calculate_gimbal_angles(pixel_x, pixel_y, image_width=640, image_height=480)
         angle_x = 25.875 * (1 if diff_x > 0 else -1)
     else:
         angle_x = 34.5 * (1 if diff_x > 0 else -1)
+    '''
 
     # Y축 (수직) 각도 계산
     if abs(diff_y) <= 40:
@@ -114,15 +120,16 @@ def draw_grid_with_angles(image):
 ##### 메인 함수 내 임시 변수 #####
 temp_Angle = FORWARD_POS
 temp_Velo = 0
-step_value = 128
-Turning_Step = 0
+max_deg_value = round(MAXIMUM_STEERING_ANG * (4096 / 360))
+# Turning_Step = 0
 
-obj_y = 0.0
 gimbal_angle_x = 0.0
 
 #메인 함수
 try:
     while True:
+        depth = 0.0
+        
         frames = pipeline.wait_for_frames()
         aligned_frames = align.process(frames)
         color_frame = aligned_frames.get_color_frame()
@@ -169,15 +176,15 @@ try:
 
 
                 cv2.putText(color_image, depth_object_name, (x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 0.8, (127, 255, 212), 1)
-                cv2.putText(color_image, position_label, (x1, y1 - 30), cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
-                cv2.putText(color_image, gimbal_label, (x1, y1 - 50), cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
+                cv2.putText(color_image, position_label, (x1, y1 - 30), cv2.FONT_HERSHEY_DUPLEX, 0.6, (127, 63, 216), 1)
+                cv2.putText(color_image, gimbal_label, (x1, y1 - 50), cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 63, 216), 1)
 
                 # print(f"{depth_object_name}, {position_label}, {gimbal_label}")
                 output_text = f"{depth_object_name}, {position_label}, {gimbal_label}"
 
 
         # 터미널 출력 (덮어쓰기)
-        sys.stdout.write(f"\r{output_text.ljust(60)}")  # 길이 고정하여 이전 값 삭제 방지
+        sys.stdout.write(f"\r{output_text.ljust(100)}")  # 길이 고정하여 이전 값 삭제 방지
         sys.stdout.flush()
 
         cv2.imshow("Color Image", color_image)
@@ -185,18 +192,25 @@ try:
             break
 
 
-        if obj_y <= 0.2:
+        if type(depth) == float and (not(math.isnan(depth)) and depth > 0.0):
+            if 0.3 <= depth <= 1.1:
+                temp_Velo = 200 * math.sqrt((depth - 0.3) / 0.8)
+            elif 0.0 < depth < 0.3:
+                # temp_Velo = -200 * math.sqrt((0.3 - depth) / 0.5) # 후진 적용 시
+                temp_Velo = 0
+            elif depth > 1.1:
+                temp_Velo = 0
+            else:
+                temp_Velo = 200
+            # print(type(depth))
+        else: # Zero or Not a Number
             temp_Velo = 0
-        elif 0.2 < obj_y < 0.3:
-            temp_Velo = 100
-        elif 0.3 <= obj_y < 0.5:
-            temp_Velo = 150
-        elif obj_y >= 0.5:
-            temp_Velo = 200
-        else: # Not a Number
-            temp_Velo = 0
-
+            # print(math.isnan(depth))
+        
+        
         if type(gimbal_angle_x) == float or int:
+            temp_Angle = FORWARD_POS + (max_deg_value * (gimbal_angle_x / 34.5))
+            '''
             if round(gimbal_angle_x) == 0.0:
                 Turning_Step = 0
             else:
@@ -205,11 +219,12 @@ try:
             if Turning_Step == 0:
                 temp_Angle = FORWARD_POS
             else:
-                temp_Angle = FORWARD_POS + (Turning_Step * step_value)
+                temp_Angle = FORWARD_POS + (Turning_Step * max_deg_value)
+            '''
         else:
             pass
 
-        # print(f"{obj_y:0.3f}, {gimbal_angle_x:6.2f}, {Turning_Step:2}")
+        # print(f"{depth:0.3f}, {gimbal_angle_x:6.2f}, {temp_Angle:2}")
         
         Dynmxl_process_for_ATOM(Outer_Wheel_Angle_in4096=temp_Angle, Outer_Wheel_Velocity_in200=temp_Velo)
 
