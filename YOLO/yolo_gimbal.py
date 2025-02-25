@@ -58,7 +58,7 @@ def calculate_gimbal_angles(pixel_x, pixel_y, image_width=640, image_height=480)
     center_y = image_height // 2  # 240
 
     diff_x = pixel_x - center_x
-    diff_y = ((pixel_y + 15 + y1) // 2)- center_y
+    diff_y = ((pixel_y + 15 + y1) // 2)- center_y  #-> pixel_y - center_y  //  pixel_y= (y1 + y2) // 2
 
     angle_x = 0
     angle_y = 0
@@ -102,10 +102,10 @@ def draw_grid_with_angles(image):
         cv2.line(image, (x, 0), (x, h), (0, 255, 0), 1)  # 초록색
 
     # 빨간색 중심선 그리기
-    center_x = w // 2
-    center_y = h // 2
-    cv2.line(image, (center_x, 0), (center_x, h), (0, 0, 255), 2)  # 빨간색, 두께 2
-    cv2.line(image, (0, center_y), (w, center_y), (0, 0, 255), 2)  # 빨간색, 두께 2
+    # center_x = w // 2
+    # center_y = h // 2
+    # cv2.line(image, (center_x, 0), (center_x, h), (0, 0, 255), 2)  # 빨간색, 두께 2
+    # cv2.line(image, (0, center_y), (w, center_y), (0, 0, 255), 2)  # 빨간색, 두께 2
 
 #메인 함수
 try:
@@ -124,7 +124,7 @@ try:
         # 그리드 및 중심선 그리기
         draw_grid_with_angles(color_image)
 
-        results = model.track(source=color_image, persist=True, classes=39, verbose=False)
+        results = model.track(source=color_image, persist=True, classes=41, verbose=False)
 
         time.sleep(0.005)
 
@@ -139,20 +139,21 @@ try:
                 class_id = box.cls[0].cpu().numpy()
 
                 pixel_x = (x1 + x2) // 2
-                pixel_y = y2 - 15
+                pixel_y = y2 - 15  #pixel_y= (y1 + y2) // 2
+
 
                 depth = depth_frame.get_distance(pixel_x, pixel_y)
 
-                obj_x, obj_y, obj_z = compute_object_position(depth, pixel_x, pixel_y)
-                gimbal_angle_x, gimbal_angle_y = calculate_gimbal_angles(pixel_x, pixel_y)
+                obj_x, obj_y, obj_z = compute_object_position(depth, pixel_x, pixel_y)  # pixel_y*2 - y1 -15
+                gimbal_angle_x, gimbal_angle_y = calculate_gimbal_angles(pixel_x, pixel_y) # pixel_y*2 - y1 -15
 
                 depth_object_name = f"{model.names[int(class_id)]}, depth: {depth:.3f}m"
                 position_label = f"({obj_x:.3f}, {obj_y:.3f}, {obj_z:.3f})"
                 gimbal_label = f"Gimbal angles: ({gimbal_angle_x:.2f}, {gimbal_angle_y:.2f})"
 
                 cv2.rectangle(color_image, (x1, y1), (x2, y2), (64, 224, 208), 1, cv2.LINE_AA)
-                cv2.circle(color_image, (pixel_x, pixel_y), 2, (0, 255, 0), 2, cv2.LINE_AA)
-                cv2.circle(color_image, (pixel_x, (y1 + y2) // 2), 2, (0, 0, 255), 2, cv2.LINE_AA)
+                cv2.circle(color_image, (pixel_x, pixel_y), 2, (0, 255, 0), 2, cv2.LINE_AA)  # pixel_y*2 - y1 -15
+                cv2.circle(color_image, (pixel_x, (y1 + y2) // 2), 2, (0, 0, 255), 2, cv2.LINE_AA) #pixel_y
 
 
                 cv2.putText(color_image, depth_object_name, (x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 0.8, (127, 255, 212), 1)
@@ -164,14 +165,16 @@ try:
 
 
         # 터미널 출력 (덮어쓰기)
-        sys.stdout.write(f"\r{output_text.ljust(60)}")  # 길이 고정하여 이전 값 삭제 방지
+        sys.stdout.write(f"\r{output_text.ljust(80)}")  # 길이 고정하여 이전 값 삭제 방지
         sys.stdout.flush()
 
         cv2.imshow("Color Image", color_image)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
+        
 finally:
+    print("\n")
     pipeline.stop()
     cv2.destroyAllWindows()
 
