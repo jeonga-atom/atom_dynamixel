@@ -200,116 +200,6 @@ class DDSM115_CMD():
 
 
         return calc_DEC_data
-        
-        '''
-        if motor_mode == 1: # Current loop mode is from -32767 to +32767 (INT16 bits) / from -8[A] to +8[A]. Minimum unit: 0.00025[A]
-            if calc_mode == 0: # TX_data일 때
-                calc_DEC_data = math.floor(get_data_value / (8 / 32767)) # 입력 받은 전류 값(get_data_value)을, 8A(암페어)를 32767로 나눈 값으로 나누고, 그 값을 내림하여 정수로 만들어서 calc_DEC_data에 저장
-            else: # RX_data일 때
-                calc_DEC_data = round(get_data_value * (8 / 32767), 6) # 입력 받은 전류 값(get_data_value)을, 8A(암페어)를 32767로 나눈 값으로 '곱'하고, 그 값을 내림하여 정수로 만들어서 calc_DEC_data에 저장
-
-        elif motor_mode == 2: # Velocity loop mode is from -330 to +330 (INT16 bits) / from -330[RPM] to +330[RPM]. Minimum unit: 1[RPM]
-            if abs(round(get_data_value, 0)) >= 100: # 테스트 상태에서는 속도가 100RPM 이상일 때 제한을 두기 위함.
-                if get_data_value < 0: # 입력 받은 속도가 음수인 경우
-                    temp_motor_Velocity = -100 # -100RPM으로 제한하여 속도 임시 변수에 저장
-                else: # 입력 받은 속도가 양수인 경우
-                    temp_motor_Velocity = 100 # 100RPM으로 제한하여 속도 임시 변수에 저장
-                # print(f'Velocity is LIMITED to {temp_motor_Velocity}. Target velocity: {get_data_value}RPM') # 속도 제한 안내와 동시에 목표한 속도값 표시
-                temp_calc_DEC_data = temp_motor_Velocity # 제한한 속도(temp_motor_Velocity)를 임시 변수에 저장
-            else: # 속도가 100미만일 경우
-                temp_calc_DEC_data = get_data_value # 바로 임시 변수에 입력 받은 속도값 저장
-            calc_DEC_data = int(temp_calc_DEC_data) # 입력 받은 속도 값(get_data_value)을 calc_DEC_data에 int 형식으로 저장(속도값은 모터에 1:1로 대응됨.)
-
-        elif motor_mode == 3: # Angle(Position) loop mode is from 0 to +32767 (Unsigned INT16 bits) / from 0[°] to 360[°]. Minimum unit: 0.01[°]
-            if calc_mode == 0: # TX_data일 때
-                calc_DEC_data = round(get_data_value / (360 / 32767)) # 입력 받은 각도(위치) 값(get_data_value)을, 360°(도)를 32767로 나눈 값으로 나누고, 그 값을 반올림하여 정수로 만들어서 calc_DEC_data에 저장
-            else: # RX_data일 때
-                calc_DEC_data = round(get_data_value * (360 / 32767), 2) # 입력 받은 각도(위치) 값(get_data_value)을, 360°(도)를 32767로 나눈 값으로 '곱'하고, 그 값을 반올림하여 정수로 만들어서 calc_DEC_data에 저장
-        
-        else: # 그 외의 경우
-            raise ValueError('모터의 구동 모드가 올바르지 않아, 코드를 종료합니다.')
-        
-        
-        return calc_DEC_data #코드 비활성화와 동시에 활용하기 위한 용도로 임시 사용'''
-
-
-        '''
-        if calc_mode == 0:
-            if motor_mode == 1: # Current loop mode is from -32767 to +32767 (INT16 bits) / from -8[A] to +8[A]. Minimum unit: 0.00025[A]
-                calc_DEC_data = math.floor(get_data_value / (8 / 32767)) # 입력 받은 전류 값(get_data_value)을, 8A(암페어)를 32767로 나눈 값으로 나누고, 그 값을 내림하여 정수로 만들어서 calc_DEC_data에 저장
-            
-            elif motor_mode == 2: # Velocity loop mode is from -330 to +330 (INT16 bits) / from -330[RPM] to +330[RPM]. Minimum unit: 1[RPM]
-                if abs(round(get_data_value, 0)) >= 100: # 테스트 상태에서는 속도가 100RPM 이상일 때 제한을 두기 위함.
-                    temp_calc_DEC_data = 100 # 100RPM으로 제한하여 임시 변수에 저장
-                    print(f'Velocity is LIMITED to 100. Target velocity: {get_data_value}RPM') # 속도 제한 안내와 동시에 목표한 속도값 표시
-                else: # 속도가 100미만일 경우
-                    temp_calc_DEC_data = get_data_value # 바로 임시 변수에 입력 받은 속도값 저장
-                calc_DEC_data = int(temp_calc_DEC_data) # 입력 받은 속도 값(get_data_value)을 calc_DEC_data에 저장(속도값은 모터에 1:1로 대응됨.)
-            
-            elif motor_mode == 3: # Angle(Position) loop mode is from 0 to +32767 (Unsigned INT16 bits) / from 0[°] to 360[°]. Minimum unit: 0.01[°]
-                calc_DEC_data = round(get_data_value / (360 / 32767)) # 입력 받은 각도(위치) 값(get_data_value)을, 360°(도)를 32767로 나눈 값으로 나누고, 그 값을 반올림하여 정수로 만들어서 calc_DEC_data에 저장
-            
-            else: # 모터 모드가 잘못 저장(또는 지정)된 경우
-    ##### ##### ##### ##### ##### brake 함수 만들어서 그 외의 경우에 오류 방지를 위해 모터 정지
-                print(f'Motor(ID: {motor_ID}) has an Error.') # 모터 모드가 잘못 저장(또는 지정)된 경우에 모터 ID와 함께 안내
-        
-        else:
-            if motor_mode == 1: # Current loop mode is from -32767 to +32767 (INT16 bits) / from -8[A] to +8[A]. Minimum unit: 0.00025[A]
-                calc_DEC_data = math.floor(get_data_value * (8 / 32767)) # 입력 받은 전류 값(get_data_value)을, 8A(암페어)를 32767로 나눈 값으로 나누고, 그 값을 내림하여 정수로 만들어서 calc_DEC_data에 저장
-            
-            elif motor_mode == 2: # Velocity loop mode is from -330 to +330 (INT16 bits) / from -330[RPM] to +330[RPM]. Minimum unit: 1[RPM]
-                if abs(round(get_data_value, 0)) >= 100: # 테스트 상태에서는 속도가 100RPM 이상일 때 제한을 두기 위함.
-                    if get_data_value < 0: # 입력 받은 속도가 음수인 경우
-                        temp_motor_Velocity = -100 # -100RPM으로 제한하여 임시 변수에 저장
-                    else: # 입력 받은 속도가 양수인 경우
-                        temp_motor_Velocity = 100 # 100RPM으로 제한하여 임시 변수에 저장
-                    print(f'Velocity is LIMITED to 100. Target velocity: {raw_motor_Velocity}RPM') # 속도 제한 안내와 동시에 목표한 속도값 표시
-                else: # 속도가 100미만일 경우
-                    temp_calc_DEC_data = get_data_value # 바로 임시 변수에 입력 받은 속도값 저장
-                calc_DEC_data = int(temp_calc_DEC_data) # 입력 받은 속도 값(get_data_value)을 calc_DEC_data에 저장(속도값은 모터에 1:1로 대응됨.)
-            
-            elif motor_mode == 3: # Angle(Position) loop mode is from 0 to +32767 (Unsigned INT16 bits) / from 0[°] to 360[°]. Minimum unit: 0.01[°]
-                calc_DEC_data = round(get_data_value / (360 / 32767)) # 입력 받은 각도(위치) 값(get_data_value)을, 360°(도)를 32767로 나눈 값으로 나누고, 그 값을 반올림하여 정수로 만들어서 calc_DEC_data에 저장
-            
-            else: # 모터 모드가 잘못 저장(또는 지정)된 경우
-    ##### ##### ##### ##### ##### brake 함수 만들어서 그 외의 경우에 오류 방지를 위해 모터 정지
-                print(f'Motor(ID: {motor_ID}) has an Error.') # 모터 모드가 잘못 저장(또는 지정)된 경우에 모터 ID와 함께 안내
-                
-        print(calc_DEC_data) #출력 테스트용
-        
-        return calc_DEC_data # 계산한 모터 제어 값 데이터 반환
-        
-        
-        # 바로 아래 4단, 2단 if문은 코드 테스트용으로, 추후 주석 처리 예정.------------------------->
-        if motor_mode == 1: # Current loop mode is from -32767 to +32767 (INT16 bits)
-            motor_mode_info = 'Current loop mode(Minimum unit: 0.00025[A] / from -8[A] to +8[A])' # 전류 모드 허용 범위 상세 안내
-        elif motor_mode == 2: # Velocity loop mode is from -330 to +330 (INT16 bits)
-            motor_mode_info = 'Velocity loop mode(Minimum unit: 1[RPM] / from -330[RPM] to +330[RPM])' # 속도 모드 허용 범위 상세 안내
-        elif motor_mode == 3: # Angle(Position) loop mode is from 0 to +32767 (Unsigned INT16 bits)
-            motor_mode_info = 'Angle(Position) loop mode(Minimum unit: 0.01[°] / from 0[°] to 360[°])' # 각도(위치) 모드 허용 범위 상세 안내
-        else: # 모터의 모드가 잘못 입력된 경우
-            print(f'Error from motor mode value({motor_mode}). Please check your input.') # 모터 모드 오류 안내
-            # 참고 사항: motor_mode_info가 지정되지 않아, 아래 if문에서 오류가 발생함.
-
-        if get_data_value == '': # 코드상에서 모터의 제어 값 데이터를 받지 못한 경우
-           data_value = input(f'Enter value to move the motor(s). {motor_mode_info}\nInput: ') # 모터의 제어 값을 사용자로부터 직접 받기(문자열 자료형 - str()으로 받기)
-        else: # 코드상에서 모터의 제어 값 데이터를 받은 경우
-            data_value = get_data_value # 받은 값(get_data_value)을 함수 내 제어 값 처리 변수(data_value)에 저장
-        # 여기까지가 코드 테스트용------------------------->
-        
-        
-        if '.' in data_value: # 문자열 자료형으로 받았을 때, 문자열에 소수점이 있다면
-            temp_int_part, temp_frac_part = data_value.split('.') # 소수점을 기준으로 정수부와 소수부로 나누어서 각 변수(문자열 자료형)에 임시로 저장
-            int_part, frac_part = int(temp_int_part), int(temp_frac_part) # 이후, 문자열로 저장된 값을 각각 정수형으로 저장
-        else: # 소수점이 없는 순수 정수 형태의 문자열이라면
-            int_part = int(data_value) # 바로 정수형으로 바꾸어서 정수부 변수에 저장
-            frac_part = 0 # 소수부는 0으로 저장(어차피 0이므로)
-
-        return int_part, frac_part # 정수부와 소수부 각 값들 반환
-        '''
-    
-    
-    
     
     ##### 모터 설정 및 구동 함수 부분 #####
 
@@ -456,26 +346,30 @@ class DDSM115_CMD():
     # 모터 모드 설정 함수
     def set_Mode(self, motor_ID: int, motor_Mode: int):
         TX_data_value = motor_ID, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, motor_Mode
-        if motor_Mode == 3 and self.communicate_DATA('속도값이 10RPM 이상이면 안 되게 하려고 피드백 받는 중 / 코드 작성해! / 참고로, DEC_to_HEX를 역으로 이용하려는 생각임.'):
-            # 여기도 만들어야 함 250328
+        self.send_TX_data(TX_data_value)
+        # if motor_Mode == 3 and self.communicate_DATA('속도값이 10RPM 이상이면 안 되게 하려고 피드백 받는 중 / 코드 작성해! / 참고로, DEC_to_HEX를 역으로 이용하려는 생각임.'):
+        #     # 여기도 만들어야 함 250328
             
-            pass
+        #     pass
     
     
     # 전류 모드로 모터를 제어하는 함수
-    def Operate_Motor_Current_Mode(self, motor_ID: int, raw_motor_Current: float = 0):
+    def Operate_Motor_Current_Mode(self, motor_ID: int, raw_motor_Current: float = 0):  #인터페이스 설정정
         
         motor_Current = self.calc_DEC_data_for_read(data_mode = 1, get_data_value = raw_motor_Current, calc_mode = 0) #calc_mode: 0(기본값)인 경우에는 TX_data(모터로의 데이터 전송)
-        
+        #전송할 데이터를 DEC(십진수)로 변환함함
         Speed_High_value, Speed_Low_value = self.DEC_to_HEX(motor_Current)
         temp_TX_data_value = motor_ID, 0x64, Speed_High_value, Speed_Low_value, 0x00, 0x00, 0x00, 0x00, 0x00
 
         CRC8_value = self.calc_CRC8(temp_TX_data_value)
         TX_data_value = motor_ID, 0x64, Speed_High_value, Speed_Low_value, 0x00, 0x00, 0x00, 0x00, 0x00, CRC8_value
         
-        for repeat in range(5):
-            RX_data = self.communicate_DATA(TX_data = TX_data_value)   #여기 RX_data값을 받고 원래 안쓸 생각인건지 물어봐야함
-            self.cMotor_Current = motor_Current
+        # for repeat in range(5): #5번 반복 송신신
+        #     RX_data = self.communicate_DATA(TX_data = TX_data_value)   #여기 RX_data값을 받고 원래 안쓸 생각인건지 물어봐야함
+        #     self.cMotor_Current = motor_Current
+
+        self.communicate_DATA(TX_data = TX_data_value)   #여기 RX_data값을 받고 원래 안쓸 생각인건지 물어봐야함
+        self.cMotor_Current = motor_Current
     
     
     # 속도 모드로 모터를 제어하는 함수
@@ -489,9 +383,12 @@ class DDSM115_CMD():
         CRC8_value = self.calc_CRC8(temp_TX_data_value)
         TX_data_value = motor_ID, 0x64, Speed_High_value, Speed_Low_value, 0x00, 0x00, 0x00, 0x00, 0x00, CRC8_value
         
-        for repeat in range(5):
-            RX_data = self.communicate_DATA(TX_data = TX_data_value)
-            self.cMotor_Velocity = motor_Velocity
+        # for repeat in range(5):
+        #     RX_data = self.communicate_DATA(TX_data = TX_data_value)
+        #     self.cMotor_Velocity = motor_Velocity
+
+        self.communicate_DATA(TX_data = TX_data_value)
+        self.cMotor_Velocity = motor_Velocity
     
     
     # 각도 모드에서 절대 위치를 기준으로 모터 각을 제어하는 함수
@@ -504,9 +401,12 @@ class DDSM115_CMD():
         CRC8_value = self.calc_CRC8(temp_TX_data_value)
         TX_data_value = motor_ID, 0x64, Speed_High_value, Speed_Low_value, 0x00, 0x00, 0x00, 0x00, 0x00, CRC8_value
         
-        for repeat in range(5):
-            RX_data = self.communicate_DATA(TX_data = TX_data_value)
-            self.cMotor_Position = motor_Position
+        # for repeat in range(5):
+        #     RX_data = self.communicate_DATA(TX_data = TX_data_value)
+        #     self.cMotor_Position = motor_Position
+
+        self.communicate_DATA(TX_data = TX_data_value)
+        self.cMotor_Position = motor_Position
     
 
     # 각도 모드에서 상대 위치로 모터 각을 제어(절대 위치로 비유한다면, 제어 당시의 모터의 현위치가 영점이 되는 방식.)하는 함수
