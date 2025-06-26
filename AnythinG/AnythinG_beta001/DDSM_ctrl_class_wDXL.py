@@ -63,7 +63,7 @@ class DDSM115_CMD():
 
     ##### 계산 처리 함수(메서드) 부분 #####
     
-    # CRC8을 계산하기 위한 함수 선언
+    # CRC8(Cyclic redundancy check)을 계산하기 위한 함수 선언
     def calc_CRC8(self, HEX_data):
         # CRC8 table 출처: https://crccalc.com/?crc=&method=CRC-8/MAXIM-DOW&datatype=ascii&outtype=hex
         CRC8_MAXIM_table = (
@@ -458,12 +458,24 @@ class DDSM115_CMD():
         TX_data_value = motor_ID, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, motor_Mode
         if motor_Mode == 3 and self.communicate_DATA('속도값이 10RPM 이상이면 안 되게 하려고 피드백 받는 중 / 코드 작성해! / 참고로, DEC_to_HEX를 역으로 이용하려는 생각임.'):
             # 여기도 만들어야 함 250328
+            
             pass
     
     
     # 전류 모드로 모터를 제어하는 함수
     def Operate_Motor_Current_Mode(self, motor_ID: int, raw_motor_Current: float = 0):
-        pass
+        
+        motor_Current = self.calc_DEC_data_for_read(data_mode = 1, get_data_value = raw_motor_Current, calc_mode = 0) #calc_mode: 0(기본값)인 경우에는 TX_data(모터로의 데이터 전송)
+        
+        Speed_High_value, Speed_Low_value = self.DEC_to_HEX(motor_Current)
+        temp_TX_data_value = motor_ID, 0x64, Speed_High_value, Speed_Low_value, 0x00, 0x00, 0x00, 0x00, 0x00
+
+        CRC8_value = self.calc_CRC8(temp_TX_data_value)
+        TX_data_value = motor_ID, 0x64, Speed_High_value, Speed_Low_value, 0x00, 0x00, 0x00, 0x00, 0x00, CRC8_value
+        
+        for repeat in range(5):
+            RX_data = self.communicate_DATA(TX_data = TX_data_value)   #여기 RX_data값을 받고 원래 안쓸 생각인건지 물어봐야함
+            self.cMotor_Current = motor_Current
     
     
     # 속도 모드로 모터를 제어하는 함수
@@ -483,16 +495,29 @@ class DDSM115_CMD():
     
     
     # 각도 모드에서 절대 위치를 기준으로 모터 각을 제어하는 함수
-    def Operate_Motor_Abs_Pos_Mode(self, motor_ID: int):
-        pass
+    def Operate_Motor_Abs_Pos_Mode(self, motor_ID: int, raw_motor_Position: float = 0):
+        motor_Position = self.calc_DEC_data_for_read(data_mode = 3, get_data_value = raw_motor_Position, calc_mode = 0)
+
+        Speed_High_value, Speed_Low_value = self.DEC_to_HEX(motor_Position)
+        temp_TX_data_value = motor_ID, 0x64, Speed_High_value, Speed_Low_value, 0x00, 0x00, 0x00, 0x00, 0x00
+        
+        CRC8_value = self.calc_CRC8(temp_TX_data_value)
+        TX_data_value = motor_ID, 0x64, Speed_High_value, Speed_Low_value, 0x00, 0x00, 0x00, 0x00, 0x00, CRC8_value
+        
+        for repeat in range(5):
+            RX_data = self.communicate_DATA(TX_data = TX_data_value)
+            self.cMotor_Position = motor_Position
     
 
     # 각도 모드에서 상대 위치로 모터 각을 제어(절대 위치로 비유한다면, 제어 당시의 모터의 현위치가 영점이 되는 방식.)하는 함수
-    def Operate_Motor_Add_Angle_Mode(self, motor_ID: int):
+    def Operate_Motor_Add_Angle_Mode(self, motor_ID: int):   #모터 현재위치를 받아 제어하려면 메뉴얼의 어떤 SETTING을 봐야할지 감이 안잡함... 이것도 각도모드인지 확인 후 실행되도록 해야하는건가..
         pass
     
     
-    # 모터 정지 함수
-    def Brake_Motor(self):
-        # 여기도 만들어야 함 250328
-        pass
+    # 모터 정지 함수, 
+    def Brake_Motor(self, motor_ID: int):   
+        #valid in speed loop mode라는데 이건 Velocity모드인가??-> 무슨 모드인지 확인이 필요할까? set_Mode함수를 완성시켜서 mode를 확인하고 0x02모드일 때만 실행할 수  있는 조건을 추가할까?
+        front_TX_data_value = motor_ID, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+
+        CRC8_value = self.calc_CRC8(front_TX_data_value)
+        TX_data_value = motor_ID, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, CRC8_value
