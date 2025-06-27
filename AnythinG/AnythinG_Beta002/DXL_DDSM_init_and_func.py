@@ -311,7 +311,7 @@ def Dynmxl_Initialization(Setup_List: list):
     print("\nReady to run Dynamixels!")
 
 
-def DDSMM_Initialization(Setup_ID_list: list):
+def DDSM_Initialization(Setup_ID_list: list):
     for DDSM_ID_index in Setup_ID_list:
         DDSM_group[DDSM_ID_index].set_Mode(motor_ID=DDSM_group[DDSM_ID_index].cMotor_ID, motor_Mode=0x02)
 
