@@ -29,12 +29,6 @@ camera_matrix = np.array([[623.54013868, 0, 331.5450823],
                           [0, 0, 1]])
 dist_coeffs = np.array([ 0.11563788, -0.00684786, -0.00223002,  0.00458697, -0.52293788])  
 
-# 왜곡 보정 함수
-# def undistort_point(x, y, camera_matrix, dist_coeffs):
-#     points = np.array([[x, y]], dtype=np.float32)
-#     undistorted_points = cv2.undistortPoints(points, camera_matrix, dist_coeffs, None, camera_matrix)
-#     return undistorted_points[0][0]
-
 def undistort_image(image):
     h, w = image.shape[:2]
     new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, dist_coeffs, (w, h), 1, (w, h))
@@ -44,9 +38,6 @@ def undistort_image(image):
 
 #카메라 좌표 변환 함수
 def compute_object_position(object_depth, pixel_x, pixel_y, image_width=640, fov_x=69, camera_height=0.14):
-    """
-    픽셀 좌표 (x, y) 및 깊이값을 받아서 3D 좌표 (x, y, z)로 변환하는 함수
-    """
     max_angle_x = fov_x / 2  # 최대 시야각 (좌우 34.7도)
     angle_x = ((pixel_x/ (image_width / 2)) -1) * max_angle_x
     angle_x_rad = np.radians(angle_x)
@@ -66,13 +57,13 @@ try:
         # 색깔 프레임, 거리 프레임 얻어오기
         frames = pipeline.wait_for_frames()
         aligned_frames = align.process(frames)
+
         color_frame = aligned_frames.get_color_frame()
-        aligned_depth_frame = aligned_frames.get_depth_frame()
         depth_frame = aligned_frames.get_depth_frame()
 
         # 수치 행렬화
         color_image = np.asanyarray(color_frame.get_data())
-        depth_image = np.asanyarray(aligned_depth_frame.get_data())
+        depth_image = np.asanyarray(depth_frame.get_data())
 
         color_image = undistort_image(color_image)
 
@@ -98,6 +89,7 @@ try:
 
                 # 3D 좌표 변환 적용
                 obj_x, obj_y, obj_z = compute_object_position(depth, pixel_x, pixel_y)
+
                 # 표시할 라벨 생성
                 depth_object_name = f"{model.names[int(class_id)]}, depth: {depth:.3f}m"
                 position_label = f"({obj_x:.3f}, {obj_y:.3f}, {obj_z:.3f})"
