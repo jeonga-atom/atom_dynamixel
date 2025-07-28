@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>yolov8_ros2</name>
+  <version>0.0.1</version>
+  <description>YOLOv8 object detection node for ROS2</description>
+  <maintainer email="cyc11004@naver.com">kminseo</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+  
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>cv_bridge</depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-ultralytics</exec_depend>
+
+  <!-- 테스트 의존성 (필요 시 제거 가능) -->
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
