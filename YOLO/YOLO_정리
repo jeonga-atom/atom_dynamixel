@@ -1,0 +1,15 @@
+1번째 코드: 모든 박스 정보 처리
+        for result in results:      # 영상처리에서 이 문장은 필수적
+            boxes = result.boxes    # result.boxes는 result 객체 내에 있는 모델이 검출한 모든 박스들의 집합. -> 개별 box를 순회
+            for box in boxes:       # for box in boxes:로 모든 박스 객체에 대해 순회하며 각각 처리함. 
+                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)  # box.xyxy[0]는 개별 박스 좌표를 텐서 형태로 반환
+                                                                        # .cpu().numpy().astype(int) 는 GPU 텐서를 CPU로 이동시키고 NumPy 배열로 변환 후 정수형으로 변환하는 과정.
+                confidence = box.conf[0].cpu().numpy()                  # confidence와 class_id도 위와 같은 방식으로 해당 박스의 신뢰도와 클래스 아이디를 가져옴.
+                class_id = box.cls[0].cpu().numpy()
+
+
+2번째 코드: 특정 class_id만 선택적으로 처리
+        for box, class_id in zip(result.boxes.xyxy.cpu(), result.boxes.cls.cpu()):  # result를 직접 사용, zip으로 좌표와 클래스가 1:1매칭된 리스트 형태로 처리
+                                                                                    # result.boxes.cls.cpu()에서 전체 좌표 배열을 가져와서 각 박스 좌표 직접 추출
+            if int(class_id) == 67:          # 조건문으로 특정 클래스 id인 경우에만 처리함. 
+                x1, y1, x2, y2 = box.numpy() #바운딩 박스 좌표 추출
