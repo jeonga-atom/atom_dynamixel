@@ -8,15 +8,8 @@ import json
 from ultralytics import YOLO
 from calculate import ObjectManipulator
 
-# names: 
-#   0: circle
-#   1: circle_guide
-#   2: corss
-#   3: cross_guide
-#   4: square
-#   5: square_guide
 
-MODEL_PATH = "/home/kminseo/rjg_ws/runs/segment/train/weights/last.pt"
+# MODEL_PATH = "/home/kminseo/rjg_ws/runs/segment/train/weights/last.pt"
 OUT_PATH = "result.json"
 
 
@@ -94,9 +87,8 @@ def segmentation_calculate(image, model=None):
         # 정사각형은 그대로 사용
         angle = calc.calculate_contour_angle_square(largest_contour)
 
-    # else:
-    #     angle = calculate_contour_angle(largest_contour)
-    # return cx, cy, angle, class_id, conf_top
+    else:
+        angle = calc.calculate_contour_angle_square(largest_contour)
 
     return cx, cy, angle, class_id, conf_top
 
@@ -108,9 +100,9 @@ def main():
 
     calc = ObjectManipulator()
 
-    # 모델 로드
-    model_directory = os.environ['HOME'] + '/ptfile/seg.pt'
-    print(f"[INFO] Loading model: {model_directory}")
+    # 모델 로드 
+    model_directory = os.environ['HOME'] + '/ptfile/seg.pt' 
+    print(f"[INFO] Loading model: {model_directory}") 
     model = YOLO(model_directory)
 
     # RealSense 초기화
@@ -148,64 +140,60 @@ def main():
     os.makedirs(save_directory, exist_ok=True)
 
     try:
-        
-        frames = pipeline.wait_for_frames()
-        aligned_frames = align.process(frames)
-        color_frame = aligned_frames.get_color_frame()
-        depth_frame = aligned_frames.get_depth_frame()
+        while True:
+            frames = pipeline.wait_for_frames()
+            aligned_frames = align.process(frames)
+            color_frame = aligned_frames.get_color_frame()
+            depth_frame = aligned_frames.get_depth_frame()
 
-        if not color_frame or not depth_frame:
-            print("[WARNING] 컬러 또는 깊이 프레임을 가져오지 못했습니다.")
-            result_json = [None, None, None, None]
+            if not color_frame or not depth_frame:
+                print("[WARNING] 컬러 또는 깊이 프레임을 가져오지 못했습니다.")
+                continue
 
-            with open(OUT_PATH, 'w') as f:
-                json.dump(result_json, f, indent=4)
-            return result_json
+            color_image = np.asanyarray(color_frame.get_data())
+            depth_image = np.asanyarray(depth_frame.get_data())
 
-
-        color_image = np.asanyarray(color_frame.get_data())
-        depth_image = np.asanyarray(depth_frame.get_data())
-
-        if not image_captured:
-            cv2.imwrite(save_path_color, color_image)
-            
-            # 캡처한 사진 읽기
-            image_path_color = '/home/kminseo/LAST/captured/object.jpg'
-            image_color = cv2.imread(image_path_color)
-            result = segmentation_calculate(image_color, model=model)
-
-            if result is not None:
-                cx, cy, angle, class_id, conf_top = result
-                print(f"중심 좌표: ({cx}, {cy}), 클래스: {class_id}, 기울기 각도: {angle}도")
-
-                # 중심점 + 각도선 시각화
-                draw_angle_overlay(image_color, cx, cy, angle)
+            if not image_captured:
+                cv2.imwrite(save_path_color, color_image)
                 
-                # JSON 파일로 결과 저장 ([cx, cy, angle, class_id])
-                result_json = [
-                    cx if cx is not None else None,
-                    cy if cy is not None else None,
-                    angle if angle is not None else None,
-                    class_id if class_id is not None else None,
-                ]
+                # 캡처한 사진 읽기
+                image_path_color = '/home/kminseo/LAST/captured/target.jpg'
+                image_color = cv2.imread(image_path_color)
+                result = segmentation_calculate(image_color, model=model)
 
-                with open(OUT_PATH, 'w') as f:
-                    json.dump(result_json, f, indent=4)
-                print(f"[INFO] 중심 좌표, 깊이 값, 기울기 각도를 {OUT_PATH}에 저장했습니다.")
-            
-            else:
-                print("[WARNING] 중심 좌표 또는 컨투어 계산 실패")
-                result_json = [None, None, None, None]
-                with open(OUT_PATH, 'w') as f:
-                    json.dump(result_json, f, indent=4)
-                print(f"[INFO] 실패 결과를 {OUT_PATH}에 저장했습니다.")
+                if result is not None:
+                    cx, cy, angle, class_id, conf_top = result
+                    print(f"중심 좌표: ({cx}, {cy}), 클래스: {class_id}, 기울기 각도: {angle}도")
 
+                    # 중심점 + 각도선 시각화
+                    draw_angle_overlay(image_color, cx, cy, angle)
+                    
+                    # JSON 파일로 결과 저장 ([cx, cy, depth_value, angle])
+                    result_json = [
+                        cx if cx is not None else None,
+                        cy if cy is not None else None,
+                        angle if angle is not None else None,
+                        class_id if class_id is not None else None,
+                    ]
 
-            # 중심점이 그려진 이미지 저장
-            cv2.imwrite(save_path_color, image_color)
-
-            image_captured = True
+                    with open(OUT_PATH, 'w') as f:
+                        json.dump(result_json, f, indent=4)
+                    print(f"[INFO] 중심 좌표, 깊이 값, 기울기 각도를 {OUT_PATH}에 저장했습니다.")
                 
+                else:
+                    print("[WARNING] 중심 좌표 또는 컨투어 계산 실패")
+                    result_json = [None, None, None, None]
+                    with open(OUT_PATH, 'w') as f:
+                        json.dump(result_json, f, indent=4)
+                    print(f"[INFO] 실패 결과를 {OUT_PATH}에 저장했습니다.")
+
+
+                # 중심점이 그려진 이미지 저장
+                cv2.imwrite(save_path_color, image_color)
+
+                image_captured = True
+                return result if result is not None else (None, None, None, None)
+
     finally:
         pipeline.stop()
         cv2.destroyAllWindows()

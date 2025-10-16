@@ -33,7 +33,7 @@ def draw_angle_overlay(img, cx, cy, angle_deg, length=80, color=(0,0,255)):
     cv2.putText(img, f"{angle_deg:.1f} deg", (int(cx)+10, int(cy)-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
 
-def segmentation_calculate(image, model=None, guide_classes=(0,1,2), conf_min= 0.5):
+def segmentation_calculate(image, model=None, guide_classes=(1,3,5), conf_min= 0.5):
     """
     입력:
         image: BGR 이미지 (H,W,3)
@@ -163,7 +163,7 @@ def main():
                 [None, None, None, 3],
                 [None, None, None, 5]
             ]
-            
+
             with open(OUT_PATH, 'w') as f:
                 json.dump(ordered_guide_json, f, indent=4)
             return ordered_guide_json
@@ -178,7 +178,7 @@ def main():
             image_path_color = '/home/kminseo/LAST/captured/guide.jpg'
             image_color = cv2.imread(image_path_color)
             
-            guide_classes = (0, 1, 2)   # 현재 모델은 0,1,2로 되어있음 (1, 3, 5)로 수정 필요
+            guide_classes = (1, 3, 5)   # 현재 모델은 0,1,2로 되어있음 (1, 3, 5)로 수정 필요
             guide_list, draw_items = segmentation_calculate(image_color, model=model, guide_classes=guide_classes, conf_min=0.25)
             
             for (cx, cy, angle, class_id) in guide_list:
@@ -187,11 +187,12 @@ def main():
             # 중심점 + 각도선 시각화
             for (cx, cy, angle) in draw_items:
                 draw_angle_overlay(image_color, cx, cy, angle)
+
             cv2.imwrite(save_path_color, image_color)
 
 
             # JSON 저장 전 정렬 (1 → 3 → 5 순서 고정)
-            guide_order = [0, 1, 2]
+            guide_order = [1, 3, 5] # 1, 3, 5로 수정해야 함.
 
             ordered_guide_json = []
             
