@@ -73,6 +73,8 @@ target_data     = []
 target_cls      = -1                                    # 전역 변수, -1로 초기화
 guide_cls       = -1                                    # 전역 변수, -1로 초기화
 
+move_Ref        = 0                                     # 전역 변수. 0: Base / 1: TCP
+
 code_stop = f"""robot.Stop()"""                         # 코드 종료 시(Ctrl+C) 매니퓰레이터 정지 명령 실행
 
 def T_load_detections(json_path):
@@ -174,7 +176,7 @@ def target_camera(cam_to_obj="target"):
     cmd_data = f"""
     robot.SetVelocity({normal_vel})
     robot.ControlBoxDigitalOut(2)
-    robot.movel({camera_pose})
+    robot.movel({move_Ref}, {camera_pose})
     robot.WaitMove()
     """
     # robot_cmd.send_cmd(code_str=cmd_data)
@@ -194,7 +196,7 @@ def target_ready(_target_data):
     Moving_pose[11] = target_ready_height
     cmd_data = f"""
     robot.SetVelocity({normal_vel})
-    robot.movel({Moving_pose})
+    robot.movel({move_Ref}, {Moving_pose})
     robot.WaitMove()
     """
     # robot_cmd.send_cmd(code_str=cmd_data)
@@ -208,7 +210,7 @@ def target_go(_target_data):
     Moving_pose[11] = target_go2D_slow_height
     cmd_data = f"""
     robot.SetVelocity({normal_vel})
-    robot.movel({Moving_pose})
+    robot.movel({move_Ref}, {Moving_pose})
     robot.WaitMove()
     """
     # robot_cmd.send_cmd(code_str=cmd_data)
@@ -217,7 +219,7 @@ def target_go(_target_data):
     Moving_pose[11] = target_grip_height
     cmd_data = f"""
     robot.SetVelocity({slow_vel})
-    robot.movel({Moving_pose})
+    robot.movel({move_Ref}, {Moving_pose})
     robot.WaitMove()
     """
     # robot_cmd.send_cmd(code_str=cmd_data)
@@ -251,7 +253,7 @@ def target_pickup(_target_data):
     Moving_pose[11] = guide_move_height
     cmd_data = f"""
     robot.SetVelocity({normal_vel})
-    robot.movel({Moving_pose})
+    robot.movel({move_Ref}, {Moving_pose})
     robot.WaitMove()
     """
     # robot_cmd.send_cmd(code_str=cmd_data)
@@ -267,7 +269,7 @@ def guide_move(_guide_data):
     Moving_pose[11] = guide_move_height
     cmd_data = f"""
     robot.SetVelocity({normal_vel})
-    robot.movel({Moving_pose})
+    robot.movel({move_Ref}, {Moving_pose})
     robot.WaitMove()
     """
     # robot_cmd.send_cmd(code_str=cmd_data)
@@ -280,7 +282,7 @@ def guide_place(_guide_data):
     Moving_pose[11] = guide_place_slow_height
     cmd_data = f"""
     robot.SetVelocity({normal_vel})
-    robot.movel({Moving_pose})
+    robot.movel({move_Ref}, {Moving_pose})
     robot.WaitMove()
     """
     # robot_cmd.send_cmd(code_str=cmd_data)
@@ -297,7 +299,7 @@ def guide_place(_guide_data):
     Moving_pose[11] = guide_release_height
     cmd_data = f"""
     robot.SetVelocity({slow_vel})
-    robot.movel({Moving_pose})
+    robot.movel({move_Ref}, {Moving_pose})
     robot.WaitMove()
     """
     # robot_cmd.send_cmd(code_str=cmd_data)
@@ -323,7 +325,7 @@ def guide_comeback(_guide_data):
     Moving_pose[11] = guide_move_height
     cmd_data = f"""
     robot.SetVelocity({normal_vel})
-    robot.movel({Moving_pose})
+    robot.movel({move_Ref}, {Moving_pose})
     robot.WaitMove()
     """
     # robot_cmd.send_cmd(code_str=cmd_data)
