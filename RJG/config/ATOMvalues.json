@@ -4,6 +4,9 @@
   "robot_info_connect":     ["127.0.0.1",  3030],
   "robot_cmd_connect":      ["127.0.0.1",  3033],
 
+  "dir_seg_guide_py":      "/home/lynev/Workspaces/test_keti/others_test/atom_dynamixel/RJG/minseo/seg_guide.py",
+  "dir_seg_target_PCA_py": "/home/lynev/Workspaces/test_keti/others_test/atom_dynamixel/RJG/minseo/seg_target_PCA.py",
+
   "result_json_dir":        "/home/lynev/Documents/result.json",
   "guide_json_dir":         "/home/lynev/Documents/guide.json",
 
@@ -11,9 +14,16 @@
   "cls_Guides":      [1, 3, 5],
 
   "target_camera_pose": [
-     0.00041608748554342045,  0.9999998448719181,    -0.00037030709442165317, -0.4701260070800781,
-     0.9999972054141893,     -0.0004169481229974181, -0.0023270835984908872,   0.0360301628112793,
-    -0.0023272376363428237,  -0.0003693377892035561, -0.999997223773437,       0.6797732543945313,
+     0.0,                     1.0,                    0.0,                    -0.5,
+     1.0,                     0.0,                    0.0,                    -0.3,
+     0.0,                     0.0,                   -1.0,                     0.67,
+     0.0,                     0.0,                    0.0,                     1.0
+  ],
+
+  "guide_camera_pose":  [
+     0.0,                     1.0,                    0.0,                    -0.5,
+     1.0,                     0.0,                    0.0,                     0.3,
+     0.0,                     0.0,                   -1.0,                     0.67,
      0.0,                     0.0,                    0.0,                     1.0
   ],
 
