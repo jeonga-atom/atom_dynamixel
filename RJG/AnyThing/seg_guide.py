@@ -96,6 +96,7 @@ def segmentation_calculate(image, model=None, guide_classes=(1,3,5), conf_min= 0
 
         # guide는 다 사각형이므로 사각형을 계산하는 각도로 계산.
         angle = calc.calculate_contour_angle_square(largest_contour)
+        angle = calc.normalize_angle_0_90(angle)
 
         guide_list.append([cx, cy, angle, class_id])
         draw_items.append((cx, cy, angle))
