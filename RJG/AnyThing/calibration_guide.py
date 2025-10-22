@@ -3,23 +3,21 @@ import json, os, math
 import numpy as np
 from pathlib import Path
 
-# ======= 실제 비전 출력 파일명과 정확히 맞추세요! =======
+# ================ json 파일명 확인 =======================
 RESULT_PATH      = Path("guide.json")          # ← 비전이 쓰는 파일명과 동일하게!
-INTRINSICS_PATH  = Path("intrinsics.json")     # ← 마찬가지
+INTRINSICS_PATH  = Path("intrinsics_guide.json")     # ← 마찬가지
 ROBOT_GUIDE_PATH = Path("robot_guide.json")
 # ========================================================
 
-Z_val = 0.50  # m
+AruCo_x = 0.031041595619171847
+AruCo_y = 0.07023097062483427
+AruCo_z = 0.0
 
-# 핸드아이 예시(실측으로 교체)
-AruCo_x = 35.2245380036407
-AruCo_y = -66.81746192800584
-AruCo_z = 118.2207832845053
 T_cam_to_robot = np.array([
-    [-1, 0, 0,  AruCo_x],
-    [ 0, 0, 1,  AruCo_y],
-    [ 0, 1, 0,  AruCo_z],
-    [ 0, 0, 0,  1.0     ]
+    [1, 0, 0, AruCo_x],
+    [0, 1, 0, AruCo_y],
+    [0, 0, 1, AruCo_z],
+    [0, 0, 0, 1.0]
 ], dtype=float)
 
 def is_finite_number(x):
@@ -28,51 +26,50 @@ def is_finite_number(x):
     except Exception:
         return False
 
-def load_intrinsics(path: Path):
-    try:
-        intr = json.loads(path.read_text(encoding="utf-8"))
-        ppx, ppy, fx, fy = map(float, (intr["ppx"], intr["ppy"], intr["fx"], intr["fy"]))
-        if fx != 0.0 and fy != 0.0 and all(map(is_finite_number, (ppx, ppy, fx, fy))):
-            return ppx, ppy, fx, fy
-    except Exception:
-        pass
-    return None
-
 def safe_json_read(path: Path):
-    """쓰기 도중(부분 저장)이어도 예외 삼키고 None 반환"""
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
 
-def load_guides(path: Path):
-    """
-    기대 형식(3개):
-      [[x,y,angle,class], [x,y,angle,class], [x,y,angle,class]]
-    각 항목은 개별 검증:
-      - 세 값(x,y,angle) 중 하나라도 유효하지 않으면 해당 항목은 None 처리
-      - class는 정수로 강제 캐스팅 시도, 실패하면 None
-    항상 길이 3 리스트 반환: [ [x,y,ang,cls] or None, ... x3 ]
-    """
+def load_intrinsics(path: Path):
+    intr = safe_json_read(path)
+    if not isinstance(intr, dict):
+        return None
+    try:
+        ppx, ppy, fx, fy = map(float, (intr["ppx"], intr["ppy"], intr["fx"], intr["fy"]))
+    except Exception:
+        return None
+    if fx == 0.0 or fy == 0.0:
+        return None
+    if not all(map(is_finite_number, (ppx, ppy, fx, fy))):
+        return None
+    return ppx, ppy, fx, fy
+
+def load_guides_fixed3(path: Path):
     data = safe_json_read(path)
-    if not isinstance(data, list) or len(data) != 3:
+    if not (isinstance(data, list) and len(data) == 3):
         return None
 
     out = []
     for it in data:
-        if (isinstance(it, list) and len(it) == 4):
-            x, y, ang, cls = it
-            ok_xyz = all(is_finite_number(v) for v in (x, y, ang))
+        if isinstance(it, list) and len(it) == 5:
+            x, y, z, ang, cls = it
             cls_ok = isinstance(cls, (int, float)) and float(cls).is_integer()
-            if ok_xyz and cls_ok:
-                out.append([float(x), float(y), float(ang), int(cls)])
+            if not cls_ok:
+                out.append(None)
+                continue
+            cls = int(cls)
+
+            ok_vals = all(is_finite_number(v) for v in (x, y, z, ang))
+            if ok_vals:
+                out.append([float(x), float(y), float(z), float(ang), cls])
             else:
-                # 클래스만 맞고 좌표가 None일 수도 있는 경우 허용: [None]*16 + class 로 출력하게 함
-                out.append([None, None, None, int(cls)] if cls_ok else None)
+                out.append([None, None, None, None, cls])  # 길이 5 유지
         else:
             out.append(None)
 
-    return out if len(out) == 3 else None
+    return out
 
 def rotz(deg: float):
     r = np.deg2rad(deg); c, s = np.cos(r), np.sin(r)
@@ -86,65 +83,110 @@ def make_T(R, t):
     T[:3,  3] = t
     return T
 
-def pixel_to_cam_xy(x_pix, y_pix, ppx, ppy, fx, fy, z_cam):
+def pixel_to_cam_xy(x_pix, y_pix, z_cam, ppx, ppy, fx, fy):
     Xc = (x_pix - ppx) / fx * z_cam
     Yc = (y_pix - ppy) / fy * z_cam
     return Xc, Yc
 
 def compute_pose(vec, intr):
-    x_pix, y_pix, angle_deg, cls_id = vec
+    # vec: [x_pix, y_pix, z_cam, angle_deg, cls_id]
+    x_pix, y_pix, z_cam, angle_deg, cls_id = vec
     ppx, ppy, fx, fy = intr
-    Xc, Yc = pixel_to_cam_xy(float(x_pix), float(y_pix), ppx, ppy, fx, fy, Z_val)
-    Pc = np.array([Xc, Yc, Z_val, 1.0], dtype=float)
+
+    # 필요시 단위 가드(현장에 맞게 사용 결정)
+    # if z_cam > 10:  # mm로 올 가능성
+    #     z_cam *= 0.001
+
+    Xc, Yc = pixel_to_cam_xy(float(x_pix), float(y_pix), float(z_cam), ppx, ppy, fx, fy)
+    Pc = np.array([Xc, Yc, z_cam, 1.0], dtype=float)
     Pr = T_cam_to_robot @ Pc
+
     Rz = rotz(float(angle_deg))
-    t  = np.array([Pr[0], Pr[1], Z_val], dtype=float)
+    t  = np.array([Pr[0], Pr[1], Pr[2]], dtype=float)
     Tm = make_T(Rz, t)
     return Tm.flatten().tolist(), int(cls_id)
 
-def main():
-    print(f"[guide calib] wait for {INTRINSICS_PATH.name} & {RESULT_PATH.name} ...")
+def write_once(guides3, intr):
+    """
+    guides3: 길이 3, 각 원소는
+             - [x,y,z,ang,cls] (모두 유효) 또는
+             - [None,None,None,None,cls] (좌표 불가) 또는
+             - None
+    intr: (ppx, ppy, fx, fy)
+    """
+    outputs = []
+    for item in guides3:
+        if item is None:
+            outputs.append([None]*17)
+            continue
 
-    # 1) intrinsics 대기
+        x, y, z, ang, cls_id = item
+        if any(v is None for v in (x, y, z, ang)):
+            outputs.append([None]*16 + [cls_id])
+            continue
+
+        mat16, cls_id = compute_pose(item, intr)
+        outputs.append(mat16 + [cls_id])
+
+    # 원자적 저장
+    tmp = str(ROBOT_GUIDE_PATH) + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(outputs, f, indent=2)
+    os.replace(tmp, ROBOT_GUIDE_PATH)
+    print("[done] robot_guide.json saved.")
+
+def main():
+    print(f"[guide calib: single-shot] waiting for first refresh of {INTRINSICS_PATH.name} or {RESULT_PATH.name} ...")
+
+    # 1) 두 파일이 '초기 상태'로 존재할 때까지 대기 (파싱까지 성공해야 초기 상태로 인정)
     intr = None
+    guides3 = None
+
     while intr is None:
         try:
             os.stat(INTRINSICS_PATH)
             intr = load_intrinsics(INTRINSICS_PATH)
         except FileNotFoundError:
             pass
-    print("[ok] intrinsics loaded:", intr)
 
-    # 2) guide.json 대기
-    guides = None
-    while guides is None:
+    while guides3 is None:
         try:
             os.stat(RESULT_PATH)
-            guides = load_guides(RESULT_PATH)
+            guides3 = load_guides_fixed3(RESULT_PATH)
         except FileNotFoundError:
             pass
-    print("[ok] guide.json loaded:", guides)
 
-    # 3) 변환: 각 항목을 길이 17 리스트(행렬16 + class)로
-    outputs = []
-    for item in guides:
-        if item is None:
-            # 완전 무효 → 17개 None
-            outputs.append([None]*17)
-        elif None in item[:3]:
-            # class만 있고 좌표/각도 미유효 → 행렬16 None + class
-            cls_id = item[3] if isinstance(item[3], int) else None
-            outputs.append([None]*16 + [cls_id])
-        else:
-            mat16, cls_id = compute_pose(item, intr)
-            outputs.append(mat16 + [cls_id])
+    # 초기 mtime 기록
+    intr_mtime0   = os.stat(INTRINSICS_PATH).st_mtime
+    guides_mtime0 = os.stat(RESULT_PATH).st_mtime
+    print("[ok] initial baselines ready.")
 
-    # 4) 저장(원자적) 후 종료
-    tmp = str(ROBOT_GUIDE_PATH) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(outputs, f, indent=2)
-    os.replace(tmp, ROBOT_GUIDE_PATH)
-    print("[done] robot_guide.json saved.")
+    # 2) '둘 중 하나'라도 mtime이 바뀌는 '첫 이벤트'를 기다렸다가 한 번만 처리하고 종료
+    while True:
+        intr_changed = False
+        guides_changed = False
+
+        try:
+            if os.stat(INTRINSICS_PATH).st_mtime != intr_mtime0:
+                intr_changed = True
+        except FileNotFoundError:
+            pass
+
+        try:
+            if os.stat(RESULT_PATH).st_mtime != guides_mtime0:
+                guides_changed = True
+        except FileNotFoundError:
+            pass
+
+        if intr_changed or guides_changed:
+            # 최신 데이터로 다시 로드 (부분 저장 대비)
+            intr2 = load_intrinsics(INTRINSICS_PATH)
+            guides3_2 = load_guides_fixed3(RESULT_PATH)
+
+            if (intr2 is not None) and (guides3_2 is not None):
+                write_once(guides3_2, intr2)
+                break  # 한 번 쓰고 종료
+            # 최신 파싱 실패면 다음 루프에서 재시도
 
 if __name__ == "__main__":
     main()
