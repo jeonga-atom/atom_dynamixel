@@ -128,16 +128,17 @@ def main():
     depth_sensor = profile.get_device().first_depth_sensor()
 
     # 노출 및 게인 설정 (수동으로 다시 설정) -> 가서 조정해 봐야함.
-    color_sensor.set_option(rs.option.enable_auto_exposure, 0)        # 자동 노출 비활성화
-    color_sensor.set_option(rs.option.enable_auto_white_balance, 0)   # 자동 화이트 밸런스 비활성화
-    color_sensor.set_option(rs.option.exposure, 30)  # 노출 값 
-    color_sensor.set_option(rs.option.gain, 128)     # 게인 값 
+    # color_sensor.set_option(rs.option.enable_auto_exposure, 0)        # 자동 노출 비활성화
+    # color_sensor.set_option(rs.option.enable_auto_white_balance, 0)   # 자동 화이트 밸런스 비활성화
+    # color_sensor.set_option(rs.option.exposure, 30)  # 노출 값 
+    # color_sensor.set_option(rs.option.gain, 128)     # 게인 값 
+    color_sensor.set_option(rs.option.saturation, 75)
 
     align_to = rs.stream.color
     align = rs.align(align_to)
 
     # --- 프레임 안정화 ---
-    for _ in range(5):
+    for _ in range(2):
         pipeline.wait_for_frames()
 
     # --- intrinsics.json 저장 (한 번만) ---
@@ -148,6 +149,7 @@ def main():
         "fx":  float(intr.fx),
         "fy":  float(intr.fy),
     }
+
     tmp_intr = OUT_2_PATH + ".tmp"
     with open(tmp_intr, "w", encoding="utf-8") as f:
         json.dump(intrinsics_data, f, indent=2)
@@ -195,9 +197,13 @@ def main():
             
             guide_classes = (1, 3, 5)   # 현재 모델은 0,1,2로 되어있음 (1, 3, 5)로 수정 필요
             guide_list, draw_items = segmentation_calculate(image_color, model=model, guide_classes=guide_classes, conf_min=0.25)
+
             
+            value = []
             for (cx, cy, angle, class_id) in guide_list:
-                print(f"중심 좌표: ({cx}, {cy}), 클래스: {class_id}, 기울기 각도: {angle}도")
+                depth_value = depth_frame.get_distance(int(cx), int(cy))  # m
+                print(f"중심 좌표: ({cx}, {cy}), 클래스: {class_id}, 기울기 각도: {angle}도, 깊이: {depth_value:.3f} m")
+                value.append([cx, cy, depth_value, angle, class_id])
 
             # 중심점 + 각도선 시각화
             for (cx, cy, angle) in draw_items:
@@ -213,7 +219,7 @@ def main():
             
             for cid in guide_order:
                 # 해당 클래스의 첫 번째 결과만 (또는 여러 개면 가장 conf 높은 것)
-                items = [r for r in guide_list if r[3] == cid]
+                items = [r for r in value if r[4] == cid]
                 if items:
                     ordered_guide_json.append(items[0])  # 여러 개면 첫 번째만
 
