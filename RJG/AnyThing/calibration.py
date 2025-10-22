@@ -7,23 +7,24 @@ import numpy as np
 from pathlib import Path
 
 # 입력/출력
-RESULT_PATH = Path("result.json")      # [x, y, angle, class]
+RESULT_PATH = Path("result.json")      # [x, y, z, angle, class]
 INTRINSICS_PATH = Path("intrinsics.json")
 ROBOT_PATH  = Path("robot.json")       # 1x16 플랫 4x4 행렬 저장
 
-AruCo_x = 35.2245380036407  # 2025 RB10 예시값
-AruCo_y = -66.81746192800584
-AruCo_z = 118.2207832845053
+AruCo_x = 0.031041595619171847  # 2025 RB10 예시값
+AruCo_y = 0.07023097062483427
+AruCo_z = 0.0  # 캘리브레이션 값을 0으로 설정 -> 왜냐면 실제 측정값 + 캘리브레이션 값이 되기 때문에 하나만 써야함
+# AruCo_z = 0.4558679703623054
 
 # 고정 평면(Z_cam) — 깊이 없이 픽셀을 카메라 좌표로 투영할 때 쓰는 스케일
-Z_val   = 0.50  # 현장에 맞게 조정 [m]
+# Z_val   = 0.50  # 현장에 맞게 조정 [m]
 
 # ---- 카메라->로봇 핸드아이 4x4 (m) : 실측값으로 교체 ----
 T_cam_to_robot = np.array([
-    [-1, 0, 0, AruCo_x],    # t_z -> 캘리브레이션 기준
-    [0, 0, 1, AruCo_y],     # t_y
-    [0, 1, 0, AruCo_z],     # t_z
-    [0, 0, 0,  1.000]
+    [1, 0, 0, AruCo_x],     # t_z -> 캘리브레이션 기준
+    [0, 1, 0, AruCo_y],     # t_y
+    [0, 0, 1, AruCo_z],     # t_z
+    [0, 0, 0,  1.0]
 ], dtype=float)
 # -------------------------------------------------------------
 
@@ -33,16 +34,16 @@ def is_finite_number(x):
     except Exception:
         return False
 
-def load_json_list4(path: Path):
-    """[x,y,angle,class] 형식만 통과. None/NaN/inf/길이오류/타입오류는 None 반환."""
+def load_json_list5(path: Path):
+    """[x,y,z,angle,class] 형식만 통과. None/NaN/inf/길이오류/타입오류는 None 반환."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if (isinstance(data, list) and len(data) == 4 and
-            all(is_finite_number(v) for v in data[:3]) and       # x,y,angle
-            (isinstance(data[3], (int, float)) and               # class는 숫자
-             float(data[3]).is_integer())):
+        if (isinstance(data, list) and len(data) == 5 and
+            all(is_finite_number(v) for v in data[:4]) and       # x,y,angle
+            (isinstance(data[4], (int, float)) and               # class는 숫자
+             float(data[4]).is_integer())):
             # class를 int로 캐스팅
-            data[3] = int(data[3])
+            data[4] = int(data[4])
             return data
     except Exception:
         pass
@@ -82,19 +83,19 @@ def pixel_to_cam_xy(x_pix, y_pix, ppx, ppy, fx, fy, z_cam):
     return Xc, Yc
 
 def compute_pose(result_vec, intrinsics):
-    x_pix, y_pix, angle_deg, cls_id = result_vec
+    x_pix, y_pix, z_cam, angle_deg, cls_id = result_vec
     ppx, ppy, fx, fy = intrinsics
 
-    # 픽셀 → 카메라 (Z 고정)
-    Xc, Yc = pixel_to_cam_xy(float(x_pix), float(y_pix), ppx, ppy, fx, fy, Z_val)
-    Pc_cam = np.array([Xc, Yc, Z_val, 1.0], dtype=float)
+    # 픽셀 → 카메라 
+    Xc, Yc = pixel_to_cam_xy(float(x_pix), float(y_pix), ppx, ppy, fx, fy, z_cam)
+    Pc_cam = np.array([Xc, Yc, z_cam, 1.0], dtype=float)
 
     # 카메라 → 로봇
     Pr = T_cam_to_robot @ Pc_cam
 
     # 회전(Rz) + z 고정
     Rz = rotz(float(angle_deg))
-    t_robot = np.array([Pr[0], Pr[1], Z_val], dtype=float)
+    t_robot = np.array([Pr[0], Pr[1], Pr[2]], dtype=float)
     T_target = make_T(Rz, t_robot)
 
     return T_target.flatten().tolist(), int(cls_id)
@@ -144,7 +145,7 @@ def main():
         try:
             st_r = os.stat(RESULT_PATH)
             if last_result_mtime is None or st_r.st_mtime != last_result_mtime:
-                data = load_json_list4(RESULT_PATH)
+                data = load_json_list5(RESULT_PATH)
                 if data is not None:
                     last_result_mtime = st_r.st_mtime
                     if data != last_result_value:
