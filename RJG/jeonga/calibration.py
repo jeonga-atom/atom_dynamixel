@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
+
+# CPU 점유율이 너무 높아 부담되면 sleep(0.01) 정도를 넣음 
+
 import json, os, math
 import numpy as np
 from pathlib import Path
 
-# ====== 파일 경로 ======
-RESULT_PATH     = Path("result.json")        # [x, y, z, angle, class]
-INTRINSICS_PATH = Path("intrinsics.json")    # {ppx, ppy, fx, fy}
-ROBOT_PATH      = Path("robot.json")         # [16 floats + class]
+# 입력/출력
+RESULT_PATH = Path("result.json")      # [x, y, z, angle, class]
+INTRINSICS_PATH = Path("intrinsics.json")
+ROBOT_PATH  = Path("robot.json")       # 1x16 플랫 4x4 행렬 저장
 
-# ====== 아루코 기반 오프셋 (m 단위) ======
-AruCo_x = 0.03087013459298759
+AruCo_x = 0.031041595619171847  # 2025 RB10 예시값
 AruCo_y = 0.07023097062483427
-AruCo_z = 0.0
+AruCo_z = 0.0  # 캘리브레이션 값을 0으로 설정 -> 왜냐면 실제 측정값 + 캘리브레이션 값이 되기 때문에 하나만 써야함
+# AruCo_z = 0.4558679703623054
 
-# ====== 회전행렬 (두 번째 행렬: 옆면/위쪽 장착용) ======
+# 고정 평면(Z_cam) — 깊이 없이 픽셀을 카메라 좌표로 투영할 때 쓰는 스케일
+# Z_val   = 0.50  # 현장에 맞게 조정 [m]
+
+# ---- 카메라->로봇 핸드아이 4x4 (m) : 실측값으로 교체 ----
 R_cam_to_robot = np.array([
     [-1, 0, 0],
     [ 0, 0, 1],
@@ -23,72 +29,88 @@ R_cam_to_robot = np.array([
 t_cam_to_robot = np.array([AruCo_x, AruCo_y, AruCo_z], dtype=float)
 
 T_cam_to_robot = np.eye(4, dtype=float)
-T_cam_to_robot[:3, :3] = R_cam_to_robot
-T_cam_to_robot[:3,  3] = t_cam_to_robot
+T_cam_to_robot[:3,:3] = R_cam_to_robot
+T_cam_to_robot[:3, 3] = t_cam_to_robot
 
-# ===========================================================
+def is_finite_number(x):
+    try:
+        return isinstance(x, (int, float)) and math.isfinite(float(x))
+    except Exception:
+        return False
 
-def rotz(deg: float):
-    r = math.radians(deg)
-    c, s = math.cos(r), math.sin(r)
-    return np.array([
-        [c, -s, 0],
-        [s,  c, 0],
-        [0,  0, 1]
-    ], dtype=float)
-
-def pixel_to_cam(x, y, z, ppx, ppy, fx, fy):
-    """픽셀좌표 + 깊이 → 카메라좌표계 (m)"""
-    Xc = (x - ppx) / fx * z
-    Yc = (y - ppy) / fy * z
-    Zc = z
-    return np.array([Xc, Yc, Zc], dtype=float)
-
-def compute_pose(result_vec, intrinsics):
-    x_pix, y_pix, z_cam, angle_deg, cls_id = result_vec
-    ppx, ppy, fx, fy = intrinsics
-
-    # ① 픽셀 → 카메라
-    Pc_cam = pixel_to_cam(x_pix, y_pix, z_cam, ppx, ppy, fx, fy)
-    Pc_cam_h = np.append(Pc_cam, 1.0)  # [Xc,Yc,Zc,1]
-
-    # ② 카메라 → 로봇
-    Pr_h = T_cam_to_robot @ Pc_cam_h
-    Pr = Pr_h[:3]  # [m]
-
-    # ③ 자세 (카메라 기준 yaw → 로봇 프레임 변환)
-    Rz_cam = rotz(angle_deg)
-    R_target = R_cam_to_robot @ Rz_cam
-
-    # ④ 4x4 변환행렬 구성
-    T_target = np.eye(4, dtype=float)
-    T_target[:3,:3] = R_target
-    T_target[:3, 3] = Pr
-
-    return T_target.flatten().tolist(), int(cls_id)
-
-# ===========================================================
-
-def load_json_list5(path):
+def load_json_list5(path: Path):
+    """[x,y,z,angle,class] 형식만 통과. None/NaN/inf/길이오류/타입오류는 None 반환."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(data, list) and len(data) == 5:
+        if (isinstance(data, list) and len(data) == 5 and
+            all(is_finite_number(v) for v in data[:4]) and       # x,y,angle
+            (isinstance(data[4], (int, float)) and               # class는 숫자
+             float(data[4]).is_integer())):
+            # class를 int로 캐스팅
+            data[4] = int(data[4])
             return data
     except Exception:
         pass
     return None
 
-def load_intrinsics(path):
+def load_intrinsics(path: Path):
+    """{ppx, ppy, fx, fy} 형식만 통과. None/NaN/inf/키누락/타입오류는 None."""
     try:
         intr = json.loads(path.read_text(encoding="utf-8"))
-        ppx, ppy, fx, fy = [float(intr[k]) for k in ("ppx","ppy","fx","fy")]
-        return ppx, ppy, fx, fy
+        req = ("ppx","ppy","fx","fy")
+        if all(k in intr for k in req):
+            vals = [intr[k] for k in req]
+            if all(is_finite_number(v) for v in vals):
+                ppx, ppy, fx, fy = map(float, vals)
+                # fx, fy는 0이 되면 안됨
+                if fx != 0.0 and fy != 0.0:
+                    return ppx, ppy, fx, fy
     except Exception:
         pass
     return None
 
-# ===========================================================
+def rotz(deg: float):
+    r = np.deg2rad(deg); c, s = np.cos(r), np.sin(r)
+    return np.array([[ c,-s, 0],
+                     [ s, c, 0],
+                     [ 0, 0, 1]], dtype=float)
 
+def make_T(R, t):
+    T = np.eye(4, dtype=float)
+    T[:3,:3] = R
+    T[:3,  3] = t
+    return T
+
+def pixel_to_cam_xy(x_pix, y_pix, ppx, ppy, fx, fy, z_cam):
+    Xc = (x_pix - ppx) / fx * z_cam
+    Yc = (y_pix - ppy) / fy * z_cam
+    return Xc, Yc
+
+def compute_pose(result_vec, intrinsics):
+    x_pix, y_pix, z_cam, angle_deg, cls_id = result_vec
+    ppx, ppy, fx, fy = intrinsics
+
+    # 픽셀 → 카메라 
+    Xc, Yc = pixel_to_cam_xy(float(x_pix), float(y_pix), ppx, ppy, fx, fy, z_cam)
+    Pc_cam = np.array([Xc, Yc, z_cam, 1.0], dtype=float)
+
+    # 카메라 → 로봇 (점)
+    Pr = T_cam_to_robot @ Pc_cam
+
+    # ===== 회전: (고정 +45°) ∘ (카메라기준 yaw) 를 로봇기준으로 변환 =====
+    FIX_YAW_DEG = 45.0  # 시계 반대방향 +45°
+    Rz_cam   = rotz(float(angle_deg))      # 카메라 프레임에서의 yaw
+    R_fix    = rotz(FIX_YAW_DEG)           # 로봇 Z축 기준 +45°
+    # 최종: R_target = R_fix · (R_cam_to_robot · Rz_cam)
+    R_target = R_fix @ (T_cam_to_robot[:3,:3] @ Rz_cam)
+
+    # 최종 4x4
+    t_robot = Pr[:3]
+    T_target = make_T(R_target, t_robot)
+
+    return T_target.flatten().tolist(), int(cls_id)
+
+# --------------- 메인 루프 ---------------
 def main():
     print("[watch] 시작")
 
@@ -97,39 +119,62 @@ def main():
     last_result_value = None
     last_intr_value   = None
 
-    # intrinsics 유효할 때까지 대기
+    # 유효한 intrinsics 나올 때까지 대기
     while True:
         try:
             st = os.stat(INTRINSICS_PATH)
-            intr = load_intrinsics(INTRINSICS_PATH)
-            if intr:
-                last_intr_mtime = st.st_mtime
-                last_intr_value = intr
-                print("[ok] intrinsics 로드:", intr)
-                break
         except FileNotFoundError:
             continue
+        intr = load_intrinsics(INTRINSICS_PATH)
+        if intr is not None:
+            last_intr_mtime = st.st_mtime
+            last_intr_value = intr
+            print("[ok] intrinsics를 불러오는 중 ...:", intr)
+            break
 
-    # 변경 감지 루프 (새 값이 들어올 때만 robot.json 저장)
+    # 두 파일 모두 변경/검증
     while True:
+        intr_changed = False
+        res_changed  = False
+
+        # intrinsics 변경 감지 및 유효성 확인
+        try:
+            st_i = os.stat(INTRINSICS_PATH)
+            if last_intr_mtime is None or st_i.st_mtime != last_intr_mtime:
+                intr = load_intrinsics(INTRINSICS_PATH)
+                if intr is not None:
+                    last_intr_mtime = st_i.st_mtime
+                    if intr != last_intr_value:
+                        last_intr_value = intr
+                        intr_changed = True
+                        print("[update] intrinsics.json 바뀜! :", intr)
+        except FileNotFoundError:
+            pass  # 다음 루프에서 재시도
+
+        # result 변경 감지 및 유효성 확인
         try:
             st_r = os.stat(RESULT_PATH)
             if last_result_mtime is None or st_r.st_mtime != last_result_mtime:
                 data = load_json_list5(RESULT_PATH)
-                if data:
+                if data is not None:
                     last_result_mtime = st_r.st_mtime
                     if data != last_result_value:
                         last_result_value = data
-                        print("[update] result.json:", data)
-
-                        matrix16, cls_id = compute_pose(data, last_intr_value)
-                        out = matrix16 + [cls_id]
-                        ROBOT_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
-                        print("[write] robot.json updated:", out)
-                        last_result_value = None
+                        res_changed = True
+                        print("[update] result.json 바뀜!:", data)
         except FileNotFoundError:
             pass
 
-# ===========================================================
+        # 갱신 조건:
+        #  - result가 새로 왔고 intrinsics도 유효 → 변환/저장
+        #  - intrinsics가 바뀌었고, 마지막 유효 result가 있다 → 재계산/저장
+        if last_result_value and last_intr_value:
+            matrix16, cls_id = compute_pose(last_result_value, last_intr_value)
+            out = matrix16 + [cls_id]  # 행렬 뒤에 class 하나만 추가
+            ROBOT_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+            print("[write] robot.json updated:", out)
+            last_result_value = None  # 다음 값 기다림 (동일값 반복 방지)
+
+
 if __name__ == "__main__":
     main()
