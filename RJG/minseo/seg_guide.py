@@ -95,8 +95,12 @@ def segmentation_calculate(image, model=None, guide_classes=(1,3,5), conf_min= 0
         cx, cy, largest_contour = result
 
         # guide는 다 사각형이므로 사각형을 계산하는 각도로 계산.
-        angle = calc.calculate_contour_angle_square(largest_contour)
-        angle = calc.normalize_angle_0_90(angle)
+        if class_id == 1 :
+            angle = 0.0
+
+        else:
+            angle = calc.calculate_contour_angle_square(largest_contour)
+            angle = calc.normalize_angle_0_90(angle)
 
         guide_list.append([cx, cy, angle, class_id])
         draw_items.append((cx, cy, angle))
@@ -204,7 +208,7 @@ def main():
             value = []
             for (cx, cy, angle, class_id) in guide_list:
                 depth_value = depth_frame.get_distance(int(cx), int(cy))  # m
-                print(f"중심 좌표: ({cx}, {cy}), 클래스: {class_id}, 기울기 각도: {angle}도, 깊이: {depth_value:.3f} m")
+                print(f"중심 좌표: ({cx}, {cy}), 클래스: {class_id}, 기울기 각도: {angle}도, 깊이: {depth_value} m")
                 value.append([cx, cy, depth_value, angle, class_id])
 
             # 중심점 + 각도선 시각화
