@@ -18,6 +18,7 @@ from calculate import ObjectManipulator
 
 MODEL_PATH = "/home/kminseo/ptfile/guide.pt"
 OUT_PATH = "guide.json"
+OUT_2_PATH   = "intrinsics.json"
 
 
 def draw_angle_overlay(img, cx, cy, angle_deg, length=80, color=(0,0,255)):
@@ -95,6 +96,7 @@ def segmentation_calculate(image, model=None, guide_classes=(1,3,5), conf_min= 0
 
         # guide는 다 사각형이므로 사각형을 계산하는 각도로 계산.
         angle = calc.calculate_contour_angle_square(largest_contour)
+        angle = calc.normalize_angle_0_90(angle)
 
         guide_list.append([cx, cy, angle, class_id])
         draw_items.append((cx, cy, angle))
@@ -111,7 +113,7 @@ def main():
 
     # 모델 로드
     print("[INFO] Loading model:", MODEL_PATH)
-    model_directory = os.environ['HOME'] + '/ptfile/guide.pt'
+    model_directory = os.environ['HOME'] + '/rjg_ws/runs/segment/train4/weights/last.pt'
     model = YOLO(model_directory)
 
     # RealSense 초기화
@@ -127,17 +129,34 @@ def main():
     depth_sensor = profile.get_device().first_depth_sensor()
 
     # 노출 및 게인 설정 (수동으로 다시 설정) -> 가서 조정해 봐야함.
-    color_sensor.set_option(rs.option.enable_auto_exposure, 0)        # 자동 노출 비활성화
-    color_sensor.set_option(rs.option.enable_auto_white_balance, 0)   # 자동 화이트 밸런스 비활성화
-    color_sensor.set_option(rs.option.exposure, 30)  # 노출 값 
-    color_sensor.set_option(rs.option.gain, 128)     # 게인 값 
+    color_sensor.set_option(rs.option.enable_auto_exposure, 1)        # 자동 노출 비활성화
+    color_sensor.set_option(rs.option.enable_auto_white_balance, 1)   # 자동 화이트 밸런스 비활성화
+    # color_sensor.set_option(rs.option.exposure, 30)   # 노출 값 
+    # color_sensor.set_option(rs.option.gain, 80)       # 게인 값 
+    # color_sensor.set_option(rs.option.contrast, 65)     # 명암 대비 값
+    color_sensor.set_option(rs.option.saturation, 75)   # 채도 값
 
     align_to = rs.stream.color
     align = rs.align(align_to)
 
-    # --- 중요: 새 설정 적용될 때까지 프레임 버리기 ---
-    for _ in range(5):  # 약 0.1초간 프레임 discard
-        frames = pipeline.wait_for_frames()
+    # --- 프레임 안정화 ---
+    for _ in range(2):
+        pipeline.wait_for_frames()
+
+    # --- intrinsics.json 저장 (한 번만) ---
+    intr = profile.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
+    intrinsics_data = {
+        "ppx": float(intr.ppx),
+        "ppy": float(intr.ppy),
+        "fx":  float(intr.fx),
+        "fy":  float(intr.fy),
+    }
+
+    tmp_intr = OUT_2_PATH + ".tmp"
+    with open(tmp_intr, "w", encoding="utf-8") as f:
+        json.dump(intrinsics_data, f, indent=2)
+    os.replace(tmp_intr, OUT_2_PATH)
+    print("[INFO] intrinsics.json 저장 완료:", intrinsics_data)
 
     # 이미지 촬영 플래그
     global image_captured
@@ -159,9 +178,9 @@ def main():
             print("[WARNING] 컬러 또는 깊이 프레임을 가져오지 못했습니다.")
 
             ordered_guide_json = [
-                [None, None, None, 1],
-                [None, None, None, 3],
-                [None, None, None, 5]
+                [None, None, None, None, 1],
+                [None, None, None, None, 3],
+                [None, None, None, None, 5]
             ]
 
             with open(OUT_PATH, 'w') as f:
@@ -175,14 +194,18 @@ def main():
             cv2.imwrite(save_path_color, color_image)
             
             # 캡처한 사진 읽기
-            image_path_color = '/home/kminseo/LAST/captured/guide.jpg'
+            image_path_color = '/home/kminseo/Downloads/221.jpg'
             image_color = cv2.imread(image_path_color)
             
             guide_classes = (1, 3, 5)   # 현재 모델은 0,1,2로 되어있음 (1, 3, 5)로 수정 필요
             guide_list, draw_items = segmentation_calculate(image_color, model=model, guide_classes=guide_classes, conf_min=0.25)
+
             
+            value = []
             for (cx, cy, angle, class_id) in guide_list:
-                print(f"중심 좌표: ({cx}, {cy}), 클래스: {class_id}, 기울기 각도: {angle}도")
+                depth_value = depth_frame.get_distance(int(cx), int(cy))  # m
+                print(f"중심 좌표: ({cx}, {cy}), 클래스: {class_id}, 기울기 각도: {angle}도, 깊이: {depth_value:.3f} m")
+                value.append([cx, cy, depth_value, angle, class_id])
 
             # 중심점 + 각도선 시각화
             for (cx, cy, angle) in draw_items:
@@ -198,12 +221,12 @@ def main():
             
             for cid in guide_order:
                 # 해당 클래스의 첫 번째 결과만 (또는 여러 개면 가장 conf 높은 것)
-                items = [r for r in guide_list if r[3] == cid]
+                items = [r for r in value if r[4] == cid]
                 if items:
                     ordered_guide_json.append(items[0])  # 여러 개면 첫 번째만
 
                 else:
-                    ordered_guide_json.append([None, None, None, cid])
+                    ordered_guide_json.append([None, None, None, None, cid])
 
             with open(OUT_PATH, 'w') as f:
                 json.dump(ordered_guide_json, f, indent=4)

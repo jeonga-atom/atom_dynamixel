@@ -32,6 +32,23 @@ class ObjectManipulator:
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kern, iterations=1)
         
         return mask
+    
+    @staticmethod
+    def normalize_angle_0_90(angle_deg):
+        """어떤 각도든 [0,90) 범위로 접어 반환."""
+        if angle_deg is None:
+            return None
+        
+        a = float(angle_deg) % 180.0
+
+        if a >= 90.0:
+            a = 180.0 - a
+
+        # 90도는 0도로 간주
+        if abs(a - 90.0) < 1e-6:  # 부동소수 오차 대비
+            a = 0.0
+        
+        return a
 
     @staticmethod
     def calculate_contour_angle_square(contour):
@@ -42,10 +59,12 @@ class ObjectManipulator:
             return None
         rect = cv2.minAreaRect(contour)
         angle = rect[2]
+        # angle -= 45
+
         if angle < 0:
             angle += 180
 
-        return float(angle)
+        return angle
 
     @staticmethod
     def calculate_contour_angle_cross(contour):
@@ -61,14 +80,14 @@ class ObjectManipulator:
         if angle < 0:
             angle += 180
 
-        return float(angle)
+        return angle
 
     @staticmethod
     # 십자형은 허프+PCA 기반 정밀 각도 추정
     def angle_cross_precise(mask_bin,
                             canny1=50, canny2=150,  # Canny 엣지 검출 임곗값. 작을수록 선이 많이 생김(노이즈↑), 클수록 선이 끊길 수 있음.
-                            hough_thresh=50,        # cv2.HoughLinesP에서 선분으로 인정받기 위한 누적 투표 임계값.
-                            min_line_frac=0.12,     # 최소 선분 길이 비율 (W * 0.12)
+                            hough_thresh=40,        # cv2.HoughLinesP에서 선분으로 인정받기 위한 누적 투표 임계값.
+                            min_line_frac=0.12  ,     # 최소 선분 길이 비율 (W * 0.12)
                             max_line_gap=10,
                             cluster_bw_deg=12.0     # 대표 각도 주변 군집 폭 (±도)
                             ):
@@ -131,11 +150,16 @@ class ObjectManipulator:
         mean, eigenvecs = cv2.PCACompute(P, mean=None)[:2]
         vx, vy = eigenvecs[0]
         ang = np.degrees(np.arctan2(vy, vx))
+
+        ang -= 45
+
         if ang < 0:
             ang += 180.0
         if ang >= 90.0:
             ang -= 90.0
-        return float(ang)
+
+
+        return ang
     
     @staticmethod
     def angle_square_precise(mask_bin,
@@ -187,7 +211,7 @@ class ObjectManipulator:
         if ang < 0: ang += 90.0
         if ang >= 90.0: ang -= 90.0
         
-        return float(ang)
+        return ang
 
 
 

@@ -4,21 +4,25 @@ import numpy as np
 import time
 import pyrealsense2 as rs
 import json
+import torch 
 
 from ultralytics import YOLO
 from calculate import ObjectManipulator
 
-# names: 
-#   class_id: class_name
-#   0: circle
-#   1: circle_guide
-#   2: corss
-#   3: cross_guide
-#   4: square
-#   5: square_guide
+"""
+names: 
+    class_id: class_name
+    0: circle
+    1: circle_guide
+    2: corss
+    3: cross_guide
+    4: square
+    5: square_guide
+"""
 
 # MODEL_PATH = "/home/kminseo/rjg_ws/runs/segment/train/weights/last.pt"
 OUT_PATH = "result.json"
+OUT_2_PATH = "intrinsics.json"
 
 
 def draw_angle_overlay(img, cx, cy, angle_deg, length=80, color=(0,0,255)):
@@ -48,7 +52,7 @@ def segmentation_calculate(image, model=None):
     H, W = image.shape[:2]
 
     # YOLO 모델로 세그멘테이션 수행
-    results = model(source=image, imgsz=1280, verbose=False)
+    results = model(source=image, imgsz=1280, device='cuda', conf=0.20, retina_masks=True, verbose=False)
     if not results or results[0].masks is None or results[0].boxes is None:
         return None
     
@@ -59,7 +63,7 @@ def segmentation_calculate(image, model=None):
 
     # 첫 번째 객체 기준 (원하면 신뢰도/클래스 필터링 추가 가능)
     class_id = int(results[0].boxes.cls[i].item())
-    class_name = (model.names[class_id] if hasattr(model, "names") else results[0].names[class_id]).lower()
+    # class_name = (model.names[class_id] if hasattr(model, "names") else results[0].names[class_id]).lower()
 
     # 첫 번째 객체의 마스크와 클래스 이름 가져오기
     mask = results[0].masks.data[i].cpu().numpy()
@@ -84,26 +88,32 @@ def segmentation_calculate(image, model=None):
 
     cx, cy, largest_contour = result
 
-    if class_name == 'circle':
+    if class_id == 0 :
         angle = 0.0
 
-    elif class_name == 'corss':    
+    elif class_id == 2 :    
         # 교차형(corss)은 측정된 각도 +45도 보정  -> 추후에 cross로 이름 수정해야함. 
         # 십자형은 허프+PCA 기반 정밀 각도 추정
         angle = calc.angle_cross_precise(mask)
+        angle = calc.normalize_angle_0_90(angle)
+
         if angle is None:
             # 백업: 기존 minAreaRect 방식
             angle = calc.calculate_contour_angle_cross(largest_contour)
+            angle = calc.normalize_angle_0_90(angle)
+            print('none')
 
-    elif class_name == 'square':
+    elif class_id == 4 :
         # 정사각형은 그허프+PCA 기반 정밀 각도 추정
         angle = calc.angle_square_precise(mask)
+        angle = calc.normalize_angle_0_90(angle)
+
         if angle is None:
             # 백업: 기존 minAreaRect 방식
             angle = calc.calculate_contour_angle_square(largest_contour)
+            angle = calc.normalize_angle_0_90(angle)
+            print('none')
 
-    else:
-        angle = calc.calculate_contour_angle_square(largest_contour)
 
     return cx, cy, angle, class_id, conf_top
 
@@ -115,10 +125,19 @@ def main():
 
     calc = ObjectManipulator()
 
+    t0 = time.time()
     # 모델 로드 
-    model_directory = os.environ['HOME'] + '/ptfile/seg.pt' 
-    print(f"[INFO] Loading model: {model_directory}") 
+    model_directory = os.environ['HOME'] + '/rjg_ws/runs/segment/train4/weights/last.pt' 
+    # print(f"[INFO] Loading model: {model_directory}") 
     model = YOLO(model_directory)
+
+    assert torch.cuda.is_available(), "[ERROR] CUDA(GPU) 미감지"  
+    model.to('cuda')                            
+
+    print(f"[INFO] Loading model: {model_directory}") 
+    t1 = time.time()
+
+    print(f"전체 걸린 시간: {t1 - t0:.2f}초")
 
     # RealSense 초기화
     pipeline = rs.pipeline()
@@ -128,22 +147,41 @@ def main():
     profile = pipeline.start(config)
 
     # 카메라 설정 조정
-    device = profile.get_device()
-    color_sensor = device.query_sensors()[1]
+    rs_device = profile.get_device()
+    color_sensor = rs_device.query_sensors()[1]
     depth_sensor = profile.get_device().first_depth_sensor()
 
     # 노출 및 게인 설정 (수동으로 다시 설정) -> 가서 조정해 봐야함.
-    color_sensor.set_option(rs.option.enable_auto_exposure, 0)        # 자동 노출 비활성화
-    color_sensor.set_option(rs.option.enable_auto_white_balance, 0)   # 자동 화이트 밸런스 비활성화
-    color_sensor.set_option(rs.option.exposure, 30)  # 노출 값 
-    color_sensor.set_option(rs.option.gain, 128)     # 게인 값 
+    color_sensor.set_option(rs.option.enable_auto_exposure, 1)        # 자동 노출 비활성화
+    color_sensor.set_option(rs.option.enable_auto_white_balance, 1)   # 자동 화이트 밸런스 비활성화
+    # color_sensor.set_option(rs.option.exposure, 30)   # 노출 값 
+    # color_sensor.set_option(rs.option.gain, 80)       # 게인 값 
+    color_sensor.set_option(rs.option.contrast, 65)     # 명암 대비 값
+    color_sensor.set_option(rs.option.saturation, 75)   # 채도 값
 
     align_to = rs.stream.color
     align = rs.align(align_to)
 
     # --- 중요: 새 설정 적용될 때까지 프레임 버리기 ---
-    for _ in range(5):  # 약 0.1초간 프레임 discard
+    for _ in range(2):  # 약 0.1초간 프레임 discard
         frames = pipeline.wait_for_frames()
+
+    # ===== 여기부터 intrinsics.json 저장 =====
+    intr = profile.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
+    intrinsics_data = {
+        "ppx": float(intr.ppx),
+        "ppy": float(intr.ppy),
+        "fx":  float(intr.fx),
+        "fy":  float(intr.fy),
+    }
+
+    # 더 안전한 원자적 저장(임시 파일 → 교체)
+    _tmp = OUT_2_PATH + ".tmp"
+    with open(_tmp, "w", encoding="utf-8") as f:
+        json.dump(intrinsics_data, f, indent=2)
+    os.replace(_tmp, OUT_2_PATH)
+
+    print("[INFO] intrinsics.json 저장 완료:", intrinsics_data)
 
     # 이미지 촬영 플래그
     global image_captured
@@ -166,19 +204,20 @@ def main():
                 continue
 
             color_image = np.asanyarray(color_frame.get_data())
-            depth_image = np.asanyarray(depth_frame.get_data())
 
             if not image_captured:
                 cv2.imwrite(save_path_color, color_image)
                 
-                # 캡처한 사진 읽기
+                # # 캡처한 사진 읽기
                 image_path_color = '/home/kminseo/LAST/captured/target.jpg'
                 image_color = cv2.imread(image_path_color)
                 result = segmentation_calculate(image_color, model=model)
 
                 if result is not None:
                     cx, cy, angle, class_id, _ = result
-                    print(f"중심 좌표: ({cx}, {cy}), 클래스: {class_id}, 기울기 각도: {angle}도")
+                    depth_value = depth_frame.get_distance(int(cx), int(cy))  # 단위: m
+
+                    print(f"중심 좌표: ({cx}, {cy}), 클래스: {class_id}, 기울기 각도: {angle}도, 깊이: {depth_value} m")
 
                     # 중심점 + 각도선 시각화
                     draw_angle_overlay(image_color, cx, cy, angle)
@@ -187,6 +226,7 @@ def main():
                     result_json = [
                         cx if cx is not None else None,
                         cy if cy is not None else None,
+                        depth_value if depth_value is not None else None,
                         angle if angle is not None else None,
                         class_id if class_id is not None else None,
                     ]
@@ -197,7 +237,7 @@ def main():
                 
                 else:
                     print("[WARNING] 중심 좌표 또는 컨투어 계산 실패")
-                    result_json = [None, None, None, None]
+                    result_json = [None, None, None, None, None]
                     with open(OUT_PATH, 'w') as f:
                         json.dump(result_json, f, indent=4)
                     print(f"[INFO] 실패 결과를 {OUT_PATH}에 저장했습니다.")
@@ -207,7 +247,11 @@ def main():
                 cv2.imwrite(save_path_color, image_color)
 
                 image_captured = True
-                return result if result is not None else (None, None, None, None)
+
+                t8 = time.time()
+                print(f"전체 걸린 시간: {t8 - t7:.2f}초")
+
+                return result if result is not None else (None, None, None, None, None)
 
     finally:
         pipeline.stop()
@@ -215,4 +259,5 @@ def main():
         print("[INFO] 종료 완료.")
 
 if __name__ == "__main__":
+    t7 = time.time()
     main()
