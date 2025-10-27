@@ -168,7 +168,6 @@ def segmentation_calculate(image, model=None, calc=None):
     result = [cx, cy, angle, class_id, conf_top]
     return result
 
-
 def main():
     global model
     global profile
@@ -266,7 +265,7 @@ def main():
                     # 결과 저장 ([cx, cy, depth_value, angle])
                     result = [cx, cy, depth_value, angle, class_id]
                     pose_flat_1x16, cls_id = compute_pose(result, intrinsics_data, T_cam_to_robot)  # [FIX] result_xyz → result
-                    robot_payload = [pose_flat_1x16, cls_id]  # [FIX] 저장할 payload 정의
+                    robot_payload = pose_flat_1x16 + [cls_id]  # [FIX] 저장할 payload 정의
                     with open(ROBOT_PATH, 'w', encoding='utf-8') as f:  # [FIX] 상단의 ROBOT_PATH 사용
                         json.dump(robot_payload, f, indent=2)
                 
