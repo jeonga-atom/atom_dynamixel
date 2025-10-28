@@ -14,10 +14,10 @@ AruCo_y = 0.07023097062483427
 AruCo_z = 0.0
 
 T_cam_to_robot = np.array([
-    [1, 0, 0, AruCo_x],
-    [0, 1, 0, AruCo_y],
-    [0, 0, 1, AruCo_z],
-    [0, 0, 0, 1.0]
+    [-0.707, 0.707,  0, AruCo_x],
+    [-0.707, -0.707, 0, AruCo_y],
+    [0,      0,      1, AruCo_z],
+    [0,      0,      0, 1.0]
 ], dtype=float)
 
 def is_finite_number(x):
@@ -55,21 +55,23 @@ def load_guides_fixed3(path: Path):
     for it in data:
         if isinstance(it, list) and len(it) == 5:
             x, y, z, ang, cls = it
-            cls_ok = isinstance(cls, (int, float)) and float(cls).is_integer()
-            if not cls_ok:
-                out.append(None)
-                continue
-            cls = int(cls)
-
-            ok_vals = all(is_finite_number(v) for v in (x, y, z, ang))
-            if ok_vals:
-                out.append([float(x), float(y), float(z), float(ang), cls])
-            else:
-                out.append([None, None, None, None, cls])  # 길이 5 유지
+            out.append([x, y, z, ang, cls])
         else:
-            out.append(None)
-
+            return None
     return out
+
+def is_complete_guides3(guides3):
+    if not (isinstance(guides3, list) and len(guides3) == 3):
+        return False
+    for it in guides3:
+        if not (isinstance(it, list) and len(it) == 5):
+            return False
+        x, y, z, ang, cls = it
+        if not all(is_finite_number(v) for v in (x, y, z, ang)):
+            return False
+        if not (isinstance(cls, (int, float)) and float(cls).is_integer()):
+            return False
+    return True
 
 def rotz(deg: float):
     r = np.deg2rad(deg); c, s = np.cos(r), np.sin(r)
@@ -116,15 +118,6 @@ def write_once(guides3, intr):
     """
     outputs = []
     for item in guides3:
-        if item is None:
-            outputs.append([None]*17)
-            continue
-
-        x, y, z, ang, cls_id = item
-        if any(v is None for v in (x, y, z, ang)):
-            outputs.append([None]*16 + [cls_id])
-            continue
-
         mat16, cls_id = compute_pose(item, intr)
         outputs.append(mat16 + [cls_id])
 
@@ -167,26 +160,37 @@ def main():
         guides_changed = False
 
         try:
-            if os.stat(INTRINSICS_PATH).st_mtime != intr_mtime0:
+            m = os.stat(INTRINSICS_PATH).st_mtime
+            if m != intr_mtime0:
                 intr_changed = True
         except FileNotFoundError:
             pass
 
         try:
-            if os.stat(RESULT_PATH).st_mtime != guides_mtime0:
+            m = os.stat(RESULT_PATH).st_mtime
+            if m != guides_mtime0:
                 guides_changed = True
         except FileNotFoundError:
             pass
 
-        if intr_changed or guides_changed:
-            # 최신 데이터로 다시 로드 (부분 저장 대비)
-            intr2 = load_intrinsics(INTRINSICS_PATH)
-            guides3_2 = load_guides_fixed3(RESULT_PATH)
+        # [CHANGED] 변경 없으면 고속 폴링 유지 (sleep 없음)
+        if not (intr_changed or guides_changed):
+            continue
 
-            if (intr2 is not None) and (guides3_2 is not None):
-                write_once(guides3_2, intr2)
-                break  # 한 번 쓰고 종료
-            # 최신 파싱 실패면 다음 루프에서 재시도
+        # 최신 값 로드
+        intr2 = load_intrinsics(INTRINSICS_PATH)
+        guides3_2 = load_guides_fixed3(RESULT_PATH)
+
+        # [CHANGED] 기준 mtime을 '현재'로 갱신해 다음 변경 이벤트를 기다리도록
+        try: intr_mtime0   = os.stat(INTRINSICS_PATH).st_mtime
+        except FileNotFoundError: pass
+        try: guides_mtime0 = os.stat(RESULT_PATH).st_mtime
+        except FileNotFoundError: pass
+
+        # [CHANGED] 둘 다 파싱 OK + 3개 완성일 때만 실제 저장 후 종료
+        if (intr2 is not None) and (guides3_2 is not None) and is_complete_guides3(guides3_2):
+            write_once(guides3_2, intr2)
+            break
 
 if __name__ == "__main__":
     main()
