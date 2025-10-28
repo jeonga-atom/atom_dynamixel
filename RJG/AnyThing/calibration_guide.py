@@ -136,8 +136,6 @@ def main():
     print("[init] guide.json reset complete.")
     # 1) 두 파일이 '초기 상태'로 존재할 때까지 대기 (파싱까지 성공해야 초기 상태로 인정)
     intr = None
-    guides3 = None
-
     while intr is None:
         try:
             os.stat(INTRINSICS_PATH)
@@ -145,12 +143,14 @@ def main():
         except FileNotFoundError:
             pass
 
-    while guides3 is None:
+    # [FIX] guide.json은 '내용 파싱'을 기다리지 말고, 존재만 확인해서 mtime 베이스라인을 잡는다.
+    #       (초기값 [[],[],[]]는 load_guides_fixed3에 의해 None이 되므로 여기서 기다리면 무한 대기)
+    while True:  # 파일 생성/접근 가능한 상태가 될 때까지
         try:
             os.stat(RESULT_PATH)
-            guides3 = load_guides_fixed3(RESULT_PATH)
+            break
         except FileNotFoundError:
-            pass
+            continue
 
     # 초기 mtime 기록
     intr_mtime0   = os.stat(INTRINSICS_PATH).st_mtime
