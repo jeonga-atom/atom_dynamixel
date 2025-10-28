@@ -131,6 +131,9 @@ def write_once(guides3, intr):
 def main():
     print(f"[guide calib: single-shot] waiting for first refresh of {INTRINSICS_PATH.name} or {RESULT_PATH.name} ...")
 
+    with open(RESULT_PATH, "w", encoding="utf-8") as f:
+        json.dump([[], [], []], f, indent=2)
+    print("[init] guide.json reset complete.")
     # 1) 두 파일이 '초기 상태'로 존재할 때까지 대기 (파싱까지 성공해야 초기 상태로 인정)
     intr = None
     guides3 = None
